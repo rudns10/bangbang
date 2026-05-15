@@ -3,6 +3,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 
+// ===== 디자인 시스템 (Dark + Neon) =====
+class BB {
+  // 배경 톤
+  static const bg = Color(0xFF0B0B14);           // 가장 어두운 배경
+  static const surface = Color(0xFF161624);      // 카드 배경
+  static const surfaceHigh = Color(0xFF1F1F33);  // 강조 카드
+  static const border = Color(0xFF2A2A40);
+
+  // 텍스트
+  static const text = Color(0xFFF4F4F5);
+  static const textDim = Color(0xFFA1A1AA);
+  static const textFaint = Color(0xFF71717A);
+
+  // 네온 액센트
+  static const neonPurple = Color(0xFFA78BFA);   // 메인 (CTA, 강조)
+  static const neonCyan = Color(0xFF22D3EE);     // 보조 (포인트)
+  static const neonPink = Color(0xFFEC4899);     // 강한 강조 (인기)
+  static const neonGreen = Color(0xFF34D399);    // 성공
+  static const neonYellow = Color(0xFFFCD34D);   // 경고
+  static const neonRed = Color(0xFFF87171);      // 위험
+
+  // 카드 라운드
+  static const radius = 16.0;
+  static const radiusS = 12.0;
+}
+
 void main() {
   runApp(const BangbangApp());
 }
@@ -131,6 +157,20 @@ Future<List<RegionStats>> fetchRegionStats() async {
   }
 }
 
+/// GET /api/themes/popular?limit=N - 인기 테마
+Future<List<EscapeTheme>> fetchPopularThemes({int limit = 5}) async {
+  final url =
+      Uri.parse('http://localhost:3000/api/themes/popular?limit=$limit');
+  final response = await http.get(url);
+
+  if (response.statusCode == 200) {
+    final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+    return data.map((item) => EscapeTheme.fromJson(item)).toList();
+  } else {
+    throw Exception('인기 테마를 불러오지 못했습니다 (${response.statusCode})');
+  }
+}
+
 /// 백엔드 API 호출: GET /api/stores/{storeId}/themes
 Future<List<EscapeTheme>> fetchThemes(int storeId) async {
   final url = Uri.parse('http://localhost:3000/api/stores/$storeId/themes');
@@ -154,13 +194,62 @@ class BangbangApp extends StatelessWidget {
       title: '방방',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1F4E79),
-        ),
         useMaterial3: true,
+        brightness: Brightness.dark,
         fontFamily: 'Malgun Gothic',
+        scaffoldBackgroundColor: BB.bg,
+        canvasColor: BB.bg,
+        colorScheme: const ColorScheme.dark(
+          surface: BB.surface,
+          primary: BB.neonPurple,
+          secondary: BB.neonCyan,
+          onSurface: BB.text,
+          onPrimary: BB.bg,
+          onSecondary: BB.bg,
+          error: BB.neonRed,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: BB.bg,
+          foregroundColor: BB.text,
+          elevation: 0,
+          centerTitle: false,
+        ),
+        cardTheme: const CardThemeData(
+          color: BB.surface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(BB.radius)),
+          ),
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: BB.surface,
+          selectedItemColor: BB.neonPurple,
+          unselectedItemColor: BB.textDim,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+        ),
+        snackBarTheme: const SnackBarThemeData(
+          backgroundColor: BB.surfaceHigh,
+          contentTextStyle: TextStyle(color: BB.text),
+          behavior: SnackBarBehavior.floating,
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: BB.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+          ),
+        ),
+        dividerColor: BB.border,
+        iconTheme: const IconThemeData(color: BB.text),
+        textTheme: const TextTheme(
+          bodyMedium: TextStyle(color: BB.text),
+          bodySmall: TextStyle(color: BB.textDim),
+          titleMedium: TextStyle(color: BB.text),
+        ),
       ),
-      home: const HomeScreen(),
+      home: const HomeMainScreen(),
     );
   }
 }
@@ -1682,6 +1771,724 @@ class _LegendChip extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 11)),
       ],
+    );
+  }
+}
+
+// ===== 홈 메인 화면 (앱 진입점) =====
+
+class HomeMainScreen extends StatefulWidget {
+  const HomeMainScreen({super.key});
+
+  @override
+  State<HomeMainScreen> createState() => _HomeMainScreenState();
+}
+
+class _HomeMainScreenState extends State<HomeMainScreen> {
+  late Future<List<EscapeTheme>> _popularFuture;
+  late Future<List<RegionStats>> _regionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _popularFuture = fetchPopularThemes(limit: 5);
+    _regionFuture = fetchRegionStats();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _popularFuture = fetchPopularThemes(limit: 5);
+      _regionFuture = fetchRegionStats();
+    });
+  }
+
+  void _openList() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    );
+  }
+
+  void _openMap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MapScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: RefreshIndicator(
+        color: BB.neonPurple,
+        backgroundColor: BB.surface,
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          slivers: [
+            // === 히어로 배너 ===
+            SliverAppBar(
+              expandedHeight: 320,
+              pinned: true,
+              backgroundColor: BB.bg,
+              foregroundColor: BB.text,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.search, color: BB.text),
+                  tooltip: '검색',
+                  onPressed: _openList,
+                ),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                title: const Text(
+                  '방방',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    letterSpacing: 1.2,
+                    shadows: [
+                      Shadow(color: Colors.black, blurRadius: 6),
+                    ],
+                  ),
+                ),
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      'assets/images/home_banner.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF1A0F2E),
+                              Color(0xFF2E1A4D),
+                              Color(0xFF0B0B14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 하단 → bg 색으로 자연스럽게 페이드
+                    Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: [0.0, 0.55, 1.0],
+                          colors: [
+                            Color(0x00000000),
+                            Color(0x66000000),
+                            BB.bg,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // === 본문 ===
+            SliverList(
+              delegate: SliverChildListDelegate([
+                const SizedBox(height: 8),
+
+                // 슬로건
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '오늘은 어떤 방을\n탈출해볼까?',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: BB.text,
+                          height: 1.25,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        '전국 방탈출 매장을 지도와 리스트로',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: BB.textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // === Bento Grid 1: 메인 액션 ===
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    height: 200,
+                    child: Row(
+                      children: [
+                        // 좌: 큰 카드 (지도, 보라 글로우)
+                        Expanded(
+                          flex: 3,
+                          child: _BentoCard(
+                            onTap: _openMap,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFF3B1F66),
+                                Color(0xFF6D28D9),
+                              ],
+                            ),
+                            glowColor: BB.neonPurple,
+                            child: Stack(
+                              children: [
+                                Positioned(
+                                  right: -20,
+                                  bottom: -20,
+                                  child: Icon(
+                                    Icons.map,
+                                    size: 140,
+                                    color: BB.neonPurple.withOpacity(0.18),
+                                  ),
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '전국 지도',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: BB.text,
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '7개 권역',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: BB.textDim,
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            '색칠된 지도로\n매장 정복 현황 보기',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: BB.text,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // 우: 세로 2개 스택
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: _BentoCard(
+                                  onTap: _openList,
+                                  glowColor: BB.neonCyan,
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(14),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Icon(
+                                          Icons.list_alt,
+                                          color: BB.neonCyan,
+                                          size: 22,
+                                        ),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '전체 매장',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: BB.text,
+                                              ),
+                                            ),
+                                            Text(
+                                              '리스트로 보기',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: BB.textDim,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Expanded(
+                                child: _BentoCard(
+                                  onTap: _openList,
+                                  glowColor: BB.neonPink,
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(14),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Icon(
+                                          Icons.search,
+                                          color: BB.neonPink,
+                                          size: 22,
+                                        ),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '검색',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: BB.text,
+                                              ),
+                                            ),
+                                            Text(
+                                              '이름·지역·장르',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: BB.textDim,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                // === 인기 테마 ===
+                _sectionHeader('🔥 인기 테마', '전체 보기', _openList),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 200,
+                  child: FutureBuilder<List<EscapeTheme>>(
+                    future: _popularFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: BB.neonPurple,
+                          ),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            '${snapshot.error}',
+                            style: const TextStyle(color: BB.textDim),
+                          ),
+                        );
+                      }
+                      final themes = snapshot.data ?? [];
+                      if (themes.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            '테마 없음',
+                            style: TextStyle(color: BB.textDim),
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: themes.length,
+                        itemBuilder: (context, index) {
+                          final theme = themes[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: _PopularThemeCard(theme: theme),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                // === 권역별 ===
+                _sectionHeader('📍 권역별', '지도에서 보기', _openMap),
+                const SizedBox(height: 10),
+                FutureBuilder<List<RegionStats>>(
+                  future: _regionFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        height: 60,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: BB.neonPurple,
+                          ),
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError || snapshot.data == null) {
+                      return const SizedBox.shrink();
+                    }
+                    final stats = snapshot.data!;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: stats.map((s) {
+                          return _RegionShortcut(
+                            stat: s,
+                            onTap: _openMap,
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 40),
+              ]),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 0,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
+          BottomNavigationBarItem(icon: Icon(Icons.list), label: '리스트'),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: '마이',
+          ),
+        ],
+        onTap: (index) {
+          if (index == 1) {
+            _openList();
+          } else if (index == 2) {
+            _openMap();
+          } else if (index == 3) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('마이 페이지는 곧 만들 거예요!'),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, String linkText, VoidCallback onLink) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: BB.text,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              foregroundColor: BB.neonCyan,
+            ),
+            onPressed: onLink,
+            child: Row(
+              children: [
+                Text(linkText, style: const TextStyle(fontSize: 12)),
+                const Icon(Icons.chevron_right, size: 16),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 공통 Bento 카드 (다크 + 네온 글로우 보더)
+class _BentoCard extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final Gradient? gradient;
+  final Color glowColor;
+
+  const _BentoCard({
+    required this.child,
+    required this.onTap,
+    this.gradient,
+    required this.glowColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(BB.radius),
+      child: Container(
+        decoration: BoxDecoration(
+          color: gradient == null ? BB.surface : null,
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(BB.radius),
+          border: Border.all(
+            color: glowColor.withOpacity(0.35),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: glowColor.withOpacity(0.15),
+              blurRadius: 18,
+              spreadRadius: -4,
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: child,
+      ),
+    );
+  }
+}
+
+class _PopularThemeCard extends StatelessWidget {
+  final EscapeTheme theme;
+  const _PopularThemeCard({required this.theme});
+
+  Color _difficultyColor() {
+    if (theme.difficulty <= 2) return BB.neonGreen;
+    if (theme.difficulty == 3) return BB.neonYellow;
+    return BB.neonPink;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final diffColor = _difficultyColor();
+    return Container(
+      width: 200,
+      decoration: BoxDecoration(
+        color: BB.surface,
+        borderRadius: BorderRadius.circular(BB.radius),
+        border: Border.all(color: BB.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: diffColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: diffColor.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    '★ ${theme.difficulty}/5',
+                    style: TextStyle(
+                      color: diffColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: BB.neonPurple.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    theme.genre,
+                    style: const TextStyle(
+                      color: BB.neonPurple,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              theme.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: BB.text,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              theme.description,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: BB.textDim,
+                height: 1.4,
+              ),
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                const Icon(Icons.schedule, size: 12, color: BB.textFaint),
+                const SizedBox(width: 3),
+                Text(
+                  '${theme.durationMin}분',
+                  style: const TextStyle(fontSize: 11, color: BB.textDim),
+                ),
+                const SizedBox(width: 10),
+                const Icon(Icons.group, size: 12, color: BB.textFaint),
+                const SizedBox(width: 3),
+                Text(
+                  '${theme.minPeople}~${theme.maxPeople}',
+                  style: const TextStyle(fontSize: 11, color: BB.textDim),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RegionShortcut extends StatelessWidget {
+  final RegionStats stat;
+  final VoidCallback onTap;
+  const _RegionShortcut({required this.stat, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasStore = stat.storeCount > 0;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: BB.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: hasStore ? stat.color.withOpacity(0.6) : BB.border,
+          ),
+          boxShadow: hasStore
+              ? [
+                  BoxShadow(
+                    color: stat.color.withOpacity(0.18),
+                    blurRadius: 10,
+                    spreadRadius: -2,
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: stat.color,
+                shape: BoxShape.circle,
+                boxShadow: hasStore
+                    ? [
+                        BoxShadow(
+                          color: stat.color.withOpacity(0.6),
+                          blurRadius: 4,
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              stat.region,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: BB.text,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${stat.storeCount}',
+              style: TextStyle(
+                fontSize: 11,
+                color: hasStore ? stat.color : BB.textFaint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
