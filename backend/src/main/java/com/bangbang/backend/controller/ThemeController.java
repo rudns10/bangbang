@@ -4,6 +4,7 @@ import com.bangbang.backend.dto.ThemeDto;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
@@ -72,5 +73,17 @@ public class ThemeController {
             .filter(theme -> theme.getId().equals(id))
             .findFirst()
             .orElse(null);
+    }
+
+    // GET /api/themes/popular?limit=N - 인기 테마 (현재는 난이도 높은 순)
+    // 추후 리뷰/평점 도입 시 평점 + 리뷰 수 기준으로 정렬 변경
+    @GetMapping("/themes/popular")
+    public List<ThemeDto> getPopularThemes(
+        @RequestParam(defaultValue = "5") int limit
+    ) {
+        return THEMES.stream()
+            .sorted((a, b) -> b.getDifficulty().compareTo(a.getDifficulty()))
+            .limit(limit)
+            .collect(Collectors.toList());
     }
 }
