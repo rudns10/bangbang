@@ -178,11 +178,61 @@ class _HomeScreenState extends State<HomeScreen> {
   // API 호출 결과를 Future로 보관
   late Future<List<Store>> _storesFuture;
 
+  // 검색/필터 상태
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+  String _searchQuery = '';
+  final Set<String> _selectedSubRegions = {};
+  final Set<String> _selectedGenres = {};
+  bool _filtersExpanded = false;
+
   @override
   void initState() {
     super.initState();
     _storesFuture = fetchStores(); // 화면 처음 뜰 때 자동 호출
   }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  /// 검색어 + 선택된 필터 적용
+  List<Store> _applyFilter(List<Store> all) {
+    final q = _searchQuery.trim().toLowerCase();
+    return all.where((s) {
+      if (q.isNotEmpty) {
+        final hay =
+            '${s.name} ${s.address} ${s.subRegion} ${s.region} ${s.genre}'
+                .toLowerCase();
+        if (!hay.contains(q)) return false;
+      }
+      if (_selectedSubRegions.isNotEmpty &&
+          !_selectedSubRegions.contains(s.subRegion)) {
+        return false;
+      }
+      if (_selectedGenres.isNotEmpty && !_selectedGenres.contains(s.genre)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _searchController.clear();
+      _searchQuery = '';
+      _selectedSubRegions.clear();
+      _selectedGenres.clear();
+    });
+  }
+
+  bool get _hasActiveFilter =>
+      _searchQuery.isNotEmpty ||
+      _selectedSubRegions.isNotEmpty ||
+      _selectedGenres.isNotEmpty;
 
   /// 백엔드 API 호출: GET /api/stores
   Future<List<Store>> fetchStores() async {
@@ -223,13 +273,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.search),
+            tooltip: '검색',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('검색 기능은 곧 만들 거예요!'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
+              _searchFocus.requestFocus();
+            },
+          ),
+          IconButton(
+            icon: Icon(
+              _filtersExpanded ? Icons.filter_alt : Icons.filter_alt_outlined,
+            ),
+            tooltip: '필터',
+            onPressed: () {
+              setState(() => _filtersExpanded = !_filtersExpanded);
             },
           ),
         ],
@@ -294,32 +349,110 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // 정상: 매장 리스트 표시
           final stores = snapshot.data!;
+          final subRegions =
+              stores.map((s) => s.subRegion).toSet().toList()..sort();
+          final genres = stores.map((s) => s.genre).toSet().toList()..sort();
+          final filtered = _applyFilter(stores);
+
           return RefreshIndicator(
             onRefresh: _refresh,
             child: Column(
               children: [
-                // 상단 정보 바
+                // 검색 바
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                  color: Colors.grey.shade100,
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocus,
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    decoration: InputDecoration(
+                      hintText: '매장명, 주소, 지역, 장르 검색',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                  ),
+                ),
+                // 필터 칩 (토글 가능)
+                if (_filtersExpanded)
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                    color: Colors.grey.shade100,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFilterRow(
+                          label: '지역',
+                          options: subRegions,
+                          selected: _selectedSubRegions,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(height: 6),
+                        _buildFilterRow(
+                          label: '장르',
+                          options: genres,
+                          selected: _selectedGenres,
+                          color: Colors.green,
+                        ),
+                      ],
+                    ),
+                  ),
+                // 결과 카운트 바
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 12,
+                    vertical: 8,
                   ),
                   color: Colors.grey.shade100,
                   child: Row(
                     children: [
-                      const Text('📍 ', style: TextStyle(fontSize: 18)),
-                      const Text(
-                        '홍대 인근',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
                       Text(
-                        '· 총 ${stores.length}개 매장',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
+                        '결과 ${filtered.length}개',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
                         ),
                       ),
+                      if (_hasActiveFilter) ...[
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: const Size(0, 28),
+                            tapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.refresh, size: 14),
+                          label: const Text(
+                            '필터 초기화',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          onPressed: _clearFilters,
+                        ),
+                      ],
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -341,13 +474,41 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-                // 매장 리스트
+                // 매장 리스트 (필터 적용)
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: stores.length,
-                    itemBuilder: (context, index) {
-                      final store = stores[index];
+                  child: filtered.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 48,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  '조건에 맞는 매장이 없어요',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: _clearFilters,
+                                  child: const Text('필터 초기화'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(8),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final store = filtered[index];
                       return Card(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         elevation: 1,
@@ -471,6 +632,68 @@ class _HomeScreenState extends State<HomeScreen> {
           fontWeight: FontWeight.w500,
         ),
       ),
+    );
+  }
+
+  Widget _buildFilterRow({
+    required String label,
+    required List<String> options,
+    required Set<String> selected,
+    required MaterialColor color,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 40,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: options.map((opt) {
+                final isSelected = selected.contains(opt);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(opt),
+                    selected: isSelected,
+                    onSelected: (v) {
+                      setState(() {
+                        if (v) {
+                          selected.add(opt);
+                        } else {
+                          selected.remove(opt);
+                        }
+                      });
+                    },
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      color: isSelected ? Colors.white : color.shade800,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    backgroundColor: color.shade50,
+                    selectedColor: color.shade600,
+                    checkmarkColor: Colors.white,
+                    side: BorderSide(
+                      color: isSelected ? color.shade600 : color.shade200,
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
