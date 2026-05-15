@@ -1,0 +1,86 @@
+# ==========================
+# 공통
+# ==========================
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.tmp
+
+# IDE / 에디터
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.cursor/
+.claude/
+
+# ==========================
+# Java / Maven (backend)
+# ==========================
+backend/target/
+backend/**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+.mvn/wrapper/maven-wrapper.jar
+
+# Spring Boot
+backend/HELP.md
+backend/out/
+backend/build/
+
+# ==========================
+# Flutter / Dart (mobile)
+# ==========================
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+mobile/**/build/
+mobile/.metadata
+
+# Flutter generated platform folders (keep iOS/Android/web 소스, 빌드물만 제외)
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/**/GeneratedPluginRegistrant.java
+mobile/android/**/gradle-wrapper.jar
+mobile/android/captures/
+mobile/android/.idea/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Runner.xcworkspace/xcuserdata/
+mobile/ios/Runner.xcodeproj/xcuserdata/
+mobile/macos/Flutter/ephemeral/
+mobile/windows/flutter/ephemeral/
+mobile/linux/flutter/ephemeral/
+mobile/web/main.dart.js
+mobile/web/flutter_service_worker.js
+mobile/web/canvaskit/
+
+# ==========================
+# Web (정적 HTML 테스트)
+# ==========================
+web/.cache/
+
+# ==========================
+# 환경/시크릿
+# ==========================
+.env
+.env.local
+.env.*.local
+application-secret.properties
+application-local.properties
+*.key
+*.pem

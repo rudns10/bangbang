@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>방방 - 지도 테스트</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Malgun Gothic', sans-serif; }
+
+    .header {
+      background: #1F4E79;
+      color: white;
+      padding: 16px 20px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .header small {
+      font-size: 12px;
+      font-weight: normal;
+      opacity: 0.7;
+      margin-left: 8px;
+    }
+
+    #map {
+      width: 100%;
+      height: calc(100vh - 56px);
+    }
+
+    /* 커스텀 오버레이 (매장 이름 라벨) */
+    .label {
+      background: white;
+      border: 2px solid #1F4E79;
+      border-radius: 16px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #1F4E79;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      white-space: nowrap;
+      transform: translate(-50%, -130%);
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  방방 (가칭) - 방탈출 지도 테스트
+  <small>홍대 인근 샘플 매장 표시</small>
+</div>
+
+<div id="map"></div>
+
+<!-- 1) 아래 YOUR_JAVASCRIPT_KEY 부분을 본인 카카오 JavaScript 키로 바꿔주세요 -->
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f568cf08748b8b0e5d743b41bd6dfb52"></script>
+
+<script>
+  // 2) 샘플 매장 데이터 (홍대 근처 좌표는 예시용. 실제 위치와 다를 수 있음)
+  const stores = [
+    { name: "키이스케이프 홍대점",   lat: 37.5562, lng: 126.9220 },
+    { name: "마스터키 홍대점",       lat: 37.5538, lng: 126.9242 },
+    { name: "셜록홈즈 홍대점",       lat: 37.5571, lng: 126.9258 },
+    { name: "비트포비아 홍대점",     lat: 37.5520, lng: 126.9195 },
+    { name: "넥스트에디션 합정점",   lat: 37.5494, lng: 126.9135 },
+  ];
+
+  // 3) 지도 생성
+  const mapContainer = document.getElementById('map');
+  const mapOption = {
+    center: new kakao.maps.LatLng(37.5547, 126.9223), // 홍대입구역 근처
+    level: 4, // 줌 레벨 (작을수록 확대)
+  };
+  const map = new kakao.maps.Map(mapContainer, mapOption);
+
+  // 4) 매장마다 마커 + 라벨 표시
+  stores.forEach(store => {
+    const position = new kakao.maps.LatLng(store.lat, store.lng);
+
+    // 마커
+    const marker = new kakao.maps.Marker({
+      map: map,
+      position: position,
+    });
+
+    // 매장 이름 라벨 (커스텀 오버레이)
+    const content = `<div class="label">${store.name}</div>`;
+    new kakao.maps.CustomOverlay({
+      map: map,
+      position: position,
+      content: content,
+      yAnchor: 1,
+    });
+
+    // 마커 클릭하면 alert
+    kakao.maps.event.addListener(marker, 'click', () => {
+      alert(`${store.name} 클릭됨!\n(나중에 매장 상세 페이지로 이동)`);
+    });
+  });
+
+  // 5) 콘솔에 매장 개수 출력 (개발자 도구 F12로 확인)
+  console.log(`총 ${stores.length}개 매장 표시됨`);
+</script>
+
+</body>
+</html>
