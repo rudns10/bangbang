@@ -1,15 +1,16 @@
 ﻿import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 
 // ===== 디자인 시스템 (Dark + Neon) =====
 class BB {
-  // 배경 톤
-  static const bg = Color(0xFF0B0B14);           // 가장 어두운 배경
-  static const surface = Color(0xFF161624);      // 카드 배경
-  static const surfaceHigh = Color(0xFF1F1F33);  // 강조 카드
-  static const border = Color(0xFF2A2A40);
+  // 배경 톤 (중성 다크, 푸른 기 제거)
+  static const bg = Color(0xFF0E0E0F);           // 가장 어두운 배경
+  static const surface = Color(0xFF1A1A1B);      // 카드 배경
+  static const surfaceHigh = Color(0xFF252527);  // 강조 카드
+  static const border = Color(0xFF2E2E30);
 
   // 텍스트
   static const text = Color(0xFFF4F4F5);
@@ -191,7 +192,7 @@ class BangbangApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '방방',
+      title: '모두의 방탈출',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -207,15 +208,19 @@ class BangbangApp extends StatelessWidget {
           onPrimary: BB.bg,
           onSecondary: BB.bg,
           error: BB.neonRed,
+          surfaceTint: Colors.transparent,
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: BB.bg,
+          surfaceTintColor: Colors.transparent,
           foregroundColor: BB.text,
           elevation: 0,
+          scrolledUnderElevation: 0,
           centerTitle: false,
         ),
         cardTheme: const CardThemeData(
           color: BB.surface,
+          surfaceTintColor: Colors.transparent,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(BB.radius)),
@@ -235,6 +240,7 @@ class BangbangApp extends StatelessWidget {
         ),
         bottomSheetTheme: const BottomSheetThemeData(
           backgroundColor: BB.surface,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(20),
@@ -348,11 +354,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F4E79),
-        foregroundColor: Colors.white,
         title: const Text(
-          '방방',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+          '모두의 방탈출',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
         ),
         actions: [
           IconButton(
@@ -450,17 +454,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 // 검색 바
                 Container(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                  color: Colors.grey.shade100,
+                  color: BB.bg,
                   child: TextField(
                     controller: _searchController,
                     focusNode: _searchFocus,
                     onChanged: (v) => setState(() => _searchQuery = v),
+                    style: const TextStyle(color: BB.text, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: '매장명, 주소, 지역, 장르 검색',
-                      prefixIcon: const Icon(Icons.search, size: 20),
+                      hintStyle: const TextStyle(color: BB.textFaint),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        size: 20,
+                        color: BB.textDim,
+                      ),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.close, size: 18),
+                              icon: const Icon(
+                                Icons.close,
+                                size: 18,
+                                color: BB.textDim,
+                              ),
                               onPressed: () {
                                 _searchController.clear();
                                 setState(() => _searchQuery = '');
@@ -469,18 +483,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           : null,
                       isDense: true,
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: BB.surface,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 10,
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
+                        borderSide: const BorderSide(color: BB.border),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
+                        borderSide: const BorderSide(color: BB.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide:
+                            const BorderSide(color: BB.neonPurple, width: 1.5),
                       ),
                     ),
                   ),
@@ -489,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_filtersExpanded)
                   Container(
                     padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                    color: Colors.grey.shade100,
+                    color: BB.bg,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -515,14 +534,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  color: Colors.grey.shade100,
+                  color: BB.bg,
                   child: Row(
                     children: [
                       Text(
                         '결과 ${filtered.length}개',
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w700,
                           fontSize: 13,
+                          color: BB.text,
                         ),
                       ),
                       if (_hasActiveFilter) ...[
@@ -533,6 +553,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             minimumSize: const Size(0, 28),
                             tapTargetSize:
                                 MaterialTapTargetSize.shrinkWrap,
+                            foregroundColor: BB.neonCyan,
                           ),
                           icon: const Icon(Icons.refresh, size: 14),
                           label: const Text(
@@ -546,17 +567,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
-                          vertical: 2,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.shade100,
+                          color: BB.neonGreen.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: BB.neonGreen.withOpacity(0.4),
+                          ),
                         ),
-                        child: Text(
-                          '🟢 API 연결됨',
+                        child: const Text(
+                          '● API 연결됨',
                           style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.green.shade800,
+                            fontSize: 10,
+                            color: BB.neonGreen,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -572,21 +597,22 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.search_off,
                                   size: 48,
-                                  color: Colors.grey.shade400,
+                                  color: BB.textFaint,
                                 ),
                                 const SizedBox(height: 12),
-                                Text(
+                                const Text(
                                   '조건에 맞는 매장이 없어요',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                  ),
+                                  style: TextStyle(color: BB.textDim),
                                 ),
                                 const SizedBox(height: 8),
                                 TextButton(
                                   onPressed: _clearFilters,
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: BB.neonCyan,
+                                  ),
                                   child: const Text('필터 초기화'),
                                 ),
                               ],
@@ -594,76 +620,131 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           itemCount: filtered.length,
                           itemBuilder: (context, index) {
                             final store = filtered[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        elevation: 1,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          leading: CircleAvatar(
-                            backgroundColor: const Color(0xFF1F4E79),
-                            child: Text(
-                              '${store.id}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            store.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  store.address,
-                                  style: TextStyle(
-                                    color: Colors.grey.shade700,
-                                    fontSize: 13,
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          StoreDetailScreen(store: store),
+                                    ),
+                                  );
+                                },
+                                borderRadius:
+                                    BorderRadius.circular(BB.radius),
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: BB.surface,
+                                    borderRadius:
+                                        BorderRadius.circular(BB.radius),
+                                    border: Border.all(color: BB.border),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+                                        decoration: BoxDecoration(
+                                          gradient: const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              BB.neonPurple,
+                                              Color(0xFF6D28D9),
+                                            ],
+                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: BB.neonPurple
+                                                  .withOpacity(0.3),
+                                              blurRadius: 8,
+                                              spreadRadius: -2,
+                                            ),
+                                          ],
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          '${store.id}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              store.name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 15,
+                                                color: BB.text,
+                                                letterSpacing: -0.2,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              store.address,
+                                              style: const TextStyle(
+                                                color: BB.textDim,
+                                                fontSize: 12,
+                                              ),
+                                              maxLines: 1,
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                _buildNeonTag(
+                                                  store.subRegion,
+                                                  BB.neonCyan,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                _buildNeonTag(
+                                                  store.genre,
+                                                  BB.neonPurple,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                _buildNeonTag(
+                                                  '테마 ${store.themeCount}',
+                                                  BB.neonYellow,
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.chevron_right,
+                                        color: BB.textFaint,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    _buildTag(store.subRegion, Colors.blue),
-                                    const SizedBox(width: 4),
-                                    _buildTag(store.genre, Colors.green),
-                                    const SizedBox(width: 4),
-                                    _buildTag(
-                                      '테마 ${store.themeCount}개',
-                                      Colors.orange,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => StoreDetailScreen(store: store),
                               ),
                             );
                           },
                         ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -671,8 +752,6 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF1F4E79),
         currentIndex: 1,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
@@ -705,20 +784,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTag(String text, MaterialColor color) {
+  Widget _buildNeonTag(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.shade50,
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.shade200),
+        border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 11,
-          color: color.shade800,
-          fontWeight: FontWeight.w500,
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -739,7 +818,8 @@ class _HomeScreenState extends State<HomeScreen> {
             label,
             style: const TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w700,
+              color: BB.textDim,
             ),
           ),
         ),
@@ -765,14 +845,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     labelStyle: TextStyle(
                       fontSize: 11,
-                      color: isSelected ? Colors.white : color.shade800,
-                      fontWeight: FontWeight.w500,
+                      color: isSelected ? BB.bg : BB.text,
+                      fontWeight: FontWeight.w600,
                     ),
-                    backgroundColor: color.shade50,
-                    selectedColor: color.shade600,
-                    checkmarkColor: Colors.white,
+                    backgroundColor: BB.surface,
+                    selectedColor: color.shade300,
+                    checkmarkColor: BB.bg,
                     side: BorderSide(
-                      color: isSelected ? color.shade600 : color.shade200,
+                      color: isSelected ? color.shade300 : BB.border,
                     ),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
@@ -816,11 +896,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     final store = widget.store;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F4E79),
-        foregroundColor: Colors.white,
         title: Text(
           store.name,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
         ),
         actions: [
           IconButton(
@@ -832,45 +910,62 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
       ),
       body: Column(
         children: [
-          // 매장 정보 헤더
+          // 매장 정보 헤더 (보라 그라데이션)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF1A0F2E),
+                  Color(0xFF2E1A4D),
+                ],
+              ),
+              border: Border(
+                bottom: BorderSide(color: BB.border),
+              ),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   store.name,
                   style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: BB.text,
+                    letterSpacing: -0.3,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.place, size: 14, color: Colors.grey),
+                    const Icon(Icons.place, size: 14, color: BB.textDim),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         store.address,
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
+                        style: const TextStyle(
+                          color: BB.textDim,
                           fontSize: 13,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    _buildHeaderTag(store.subRegion, Colors.blue),
-                    const SizedBox(width: 4),
-                    _buildHeaderTag(store.genre, Colors.green),
-                    const SizedBox(width: 4),
-                    _buildHeaderTag('테마 ${store.themeCount}개', Colors.orange),
+                    _buildDetailTag(store.subRegion, BB.neonCyan),
+                    const SizedBox(width: 6),
+                    _buildDetailTag(store.genre, BB.neonPurple),
+                    const SizedBox(width: 6),
+                    _buildDetailTag(
+                      '테마 ${store.themeCount}개',
+                      BB.neonYellow,
+                    ),
                   ],
                 ),
               ],
@@ -886,9 +981,12 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(),
+                        CircularProgressIndicator(color: BB.neonPurple),
                         SizedBox(height: 16),
-                        Text('테마 정보 불러오는 중...'),
+                        Text(
+                          '테마 정보 불러오는 중...',
+                          style: TextStyle(color: BB.textDim),
+                        ),
                       ],
                     ),
                   );
@@ -901,18 +999,22 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(Icons.error_outline,
-                              size: 56, color: Colors.red),
+                              size: 56, color: BB.neonRed),
                           const SizedBox(height: 12),
                           Text(
                             '${snapshot.error}',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey.shade600),
+                            style: const TextStyle(color: BB.textDim),
                           ),
                           const SizedBox(height: 12),
                           ElevatedButton.icon(
                             icon: const Icon(Icons.refresh),
                             label: const Text('다시 시도'),
                             onPressed: _refresh,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: BB.neonPurple,
+                              foregroundColor: BB.bg,
+                            ),
                           ),
                         ],
                       ),
@@ -920,82 +1022,35 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
                   );
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('등록된 테마가 없습니다'));
+                  return const Center(
+                    child: Text(
+                      '등록된 테마가 없습니다',
+                      style: TextStyle(color: BB.textDim),
+                    ),
+                  );
                 }
 
                 final themes = snapshot.data!;
                 return RefreshIndicator(
+                  color: BB.neonPurple,
+                  backgroundColor: BB.surface,
                   onRefresh: _refresh,
                   child: ListView.builder(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     itemCount: themes.length,
                     itemBuilder: (context, index) {
                       final theme = themes[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        elevation: 1,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  theme.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '★' * theme.difficulty +
-                                    '☆' * (5 - theme.difficulty),
-                                style: const TextStyle(
-                                  color: Colors.amber,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                          subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  theme.description,
-                                  style: TextStyle(
-                                    color: Colors.grey.shade700,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 4,
-                                  runSpacing: 4,
-                                  children: [
-                                    _buildHeaderTag(theme.genre, Colors.purple),
-                                    _buildHeaderTag(
-                                      '${theme.minPeople}~${theme.maxPeople}인',
-                                      Colors.blue,
-                                    ),
-                                    _buildHeaderTag(
-                                      '${theme.durationMin}분',
-                                      Colors.teal,
-                                    ),
-                                    _buildHeaderTag(
-                                      '${theme.price}원',
-                                      Colors.orange,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
+                      final diffColor = theme.difficulty <= 2
+                          ? BB.neonGreen
+                          : theme.difficulty == 3
+                              ? BB.neonYellow
+                              : BB.neonPink;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: InkWell(
                           onTap: () {
                             Navigator.push(
                               context,
@@ -1007,6 +1062,89 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
                               ),
                             );
                           },
+                          borderRadius: BorderRadius.circular(BB.radius),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: BB.surface,
+                              borderRadius: BorderRadius.circular(BB.radius),
+                              border: Border.all(color: BB.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        theme.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 16,
+                                          color: BB.text,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: diffColor.withOpacity(0.12),
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: diffColor.withOpacity(0.4),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '★ ${theme.difficulty}/5',
+                                        style: TextStyle(
+                                          color: diffColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  theme.description,
+                                  style: const TextStyle(
+                                    color: BB.textDim,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    _buildDetailTag(
+                                      theme.genre,
+                                      BB.neonPurple,
+                                    ),
+                                    _buildDetailTag(
+                                      '${theme.minPeople}~${theme.maxPeople}인',
+                                      BB.neonCyan,
+                                    ),
+                                    _buildDetailTag(
+                                      '${theme.durationMin}분',
+                                      BB.neonGreen,
+                                    ),
+                                    _buildDetailTag(
+                                      '${theme.price}원',
+                                      BB.neonYellow,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },
@@ -1020,20 +1158,20 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     );
   }
 
-  Widget _buildHeaderTag(String text, MaterialColor color) {
+  Widget _buildDetailTag(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.shade50,
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.shade200),
+        border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: Text(
         text,
         style: TextStyle(
           fontSize: 11,
-          color: color.shade800,
-          fontWeight: FontWeight.w500,
+          color: color,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -1051,9 +1189,9 @@ class ThemeDetailScreen extends StatelessWidget {
   });
 
   Color _difficultyColor() {
-    if (theme.difficulty <= 2) return Colors.green;
-    if (theme.difficulty == 3) return Colors.orange;
-    return Colors.red;
+    if (theme.difficulty <= 2) return BB.neonGreen;
+    if (theme.difficulty == 3) return BB.neonYellow;
+    return BB.neonPink;
   }
 
   String _difficultyLabel() {
@@ -1077,11 +1215,9 @@ class ThemeDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F4E79),
-        foregroundColor: Colors.white,
         title: const Text(
           '테마 상세',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
         ),
         actions: [
           IconButton(
@@ -1100,15 +1236,24 @@ class ThemeDetailScreen extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          // 히어로 영역 (테마명 + 매장)
+          // 히어로 영역 (보라 네온 그라데이션)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF1F4E79), Color(0xFF2E6BA5)],
+                colors: [
+                  Color(0xFF1A0F2E),
+                  Color(0xFF3B1F66),
+                  Color(0xFF1A0F2E),
+                ],
+              ),
+              border: Border(
+                bottom: BorderSide(
+                  color: BB.neonPurple.withOpacity(0.3),
+                ),
               ),
             ),
             child: Column(
@@ -1120,36 +1265,40 @@ class ThemeDetailScreen extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: BB.neonPurple.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: BB.neonPurple.withOpacity(0.5),
+                    ),
                   ),
                   child: Text(
                     theme.genre,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color: BB.neonPurple,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Text(
                   theme.name,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
+                    color: BB.text,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Icon(Icons.store, color: Colors.white70, size: 14),
+                    const Icon(Icons.store, color: BB.textDim, size: 14),
                     const SizedBox(width: 4),
                     Text(
                       storeName,
                       style: const TextStyle(
-                        color: Colors.white70,
+                        color: BB.textDim,
                         fontSize: 13,
                       ),
                     ),
@@ -1163,21 +1312,25 @@ class ThemeDetailScreen extends StatelessWidget {
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _difficultyColor().withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _difficultyColor().withOpacity(0.3)),
+              color: BB.surface,
+              borderRadius: BorderRadius.circular(BB.radius),
+              border: Border.all(color: _difficultyColor().withOpacity(0.5)),
+              boxShadow: [
+                BoxShadow(
+                  color: _difficultyColor().withOpacity(0.18),
+                  blurRadius: 16,
+                  spreadRadius: -4,
+                ),
+              ],
             ),
             child: Row(
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       '난이도',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: BB.textDim, fontSize: 12),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1185,7 +1338,7 @@ class ThemeDetailScreen extends StatelessWidget {
                       style: TextStyle(
                         color: _difficultyColor(),
                         fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
@@ -1242,7 +1395,9 @@ class ThemeDetailScreen extends StatelessWidget {
                   '한 줄 설명',
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
+                    color: BB.text,
+                    letterSpacing: -0.2,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1250,12 +1405,17 @@ class ThemeDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
+                    color: BB.surface,
+                    borderRadius: BorderRadius.circular(BB.radius),
+                    border: Border.all(color: BB.border),
                   ),
                   child: Text(
                     theme.description,
-                    style: const TextStyle(fontSize: 14, height: 1.5),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: BB.text,
+                    ),
                   ),
                 ),
               ],
@@ -1273,7 +1433,9 @@ class ThemeDetailScreen extends StatelessWidget {
                       '리뷰',
                       style: TextStyle(
                         fontSize: 15,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
+                        color: BB.text,
+                        letterSpacing: -0.2,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1283,14 +1445,18 @@ class ThemeDetailScreen extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.amber.shade100,
+                        color: BB.neonYellow.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: BB.neonYellow.withOpacity(0.4),
+                        ),
                       ),
-                      child: Text(
+                      child: const Text(
                         'Coming soon',
                         style: TextStyle(
                           fontSize: 10,
-                          color: Colors.amber.shade900,
+                          color: BB.neonYellow,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -1301,22 +1467,22 @@ class ThemeDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade200),
+                    color: BB.surface,
+                    borderRadius: BorderRadius.circular(BB.radius),
+                    border: Border.all(color: BB.border),
                   ),
-                  child: Column(
+                  child: const Column(
                     children: [
                       Icon(
                         Icons.rate_review_outlined,
                         size: 40,
-                        color: Colors.grey.shade400,
+                        color: BB.textFaint,
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       Text(
                         '리뷰 기능은 다음 단계에서!',
                         style: TextStyle(
-                          color: Colors.grey.shade600,
+                          color: BB.textDim,
                           fontSize: 13,
                         ),
                       ),
@@ -1331,18 +1497,27 @@ class ThemeDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             child: SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 52,
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.event_available),
                 label: const Text(
                   '예약하기',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1F4E79),
-                  foregroundColor: Colors.white,
+                  backgroundColor: BB.neonPurple,
+                  foregroundColor: BB.bg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(BB.radius),
+                  ),
+                  elevation: 0,
+                ).copyWith(
+                  shadowColor: WidgetStateProperty.all(
+                    BB.neonPurple.withOpacity(0.5),
                   ),
                 ),
                 onPressed: () {
@@ -1365,24 +1540,25 @@ class ThemeDetailScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
+        color: BB.surface,
+        borderRadius: BorderRadius.circular(BB.radiusS),
+        border: Border.all(color: BB.border),
       ),
       child: Column(
         children: [
-          Icon(icon, color: const Color(0xFF1F4E79), size: 22),
+          Icon(icon, color: BB.neonCyan, size: 22),
           const SizedBox(height: 6),
           Text(
             label,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+            style: const TextStyle(color: BB.textDim, fontSize: 11),
           ),
           const SizedBox(height: 2),
           Text(
             value,
             style: const TextStyle(
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w800,
               fontSize: 13,
+              color: BB.text,
             ),
           ),
         ],
@@ -1393,24 +1569,188 @@ class ThemeDetailScreen extends StatelessWidget {
 
 // ===== 지도 색칠 화면 (SVG 기반) =====
 
-/// 권역 배지 배치 정보 — SVG 컨테이너 대비 비율 좌표 (0~1)
-/// 실제 한국 지리 위치 근사
-class _RegionAnchor {
+/// 시도명 → 7개 권역 매핑
+const Map<String, String> _provinceToRegion = {
+  '서울특별시': '서울',
+  '경기도': '경기·인천',
+  '인천광역시': '경기·인천',
+  '강원도': '강원',
+  '강원특별자치도': '강원',
+  '충청남도': '충청',
+  '충청북도': '충청',
+  '대전광역시': '충청',
+  '세종특별자치시': '충청',
+  '경상남도': '경상',
+  '경상북도': '경상',
+  '대구광역시': '경상',
+  '부산광역시': '경상',
+  '울산광역시': '경상',
+  '전라남도': '전라',
+  '전라북도': '전라',
+  '전북특별자치도': '전라',
+  '광주광역시': '전라',
+  '제주특별자치도': '제주',
+};
+
+/// 권역 geometry: 여러 시도의 polygon ring들을 묶음
+class _KoreaRegionGeom {
   final String name;
-  final double cx; // 중심 x (비율)
-  final double cy; // 중심 y (비율)
-  const _RegionAnchor(this.name, this.cx, this.cy);
+  final List<List<Offset>> rings; // 각 ring은 (lon, lat) 좌표
+  _KoreaRegionGeom(this.name, this.rings);
 }
 
-const List<_RegionAnchor> _regionAnchors = [
-  _RegionAnchor('강원',     0.62, 0.20),
-  _RegionAnchor('경기·인천', 0.36, 0.24),
-  _RegionAnchor('서울',     0.40, 0.18),
-  _RegionAnchor('충청',     0.42, 0.40),
-  _RegionAnchor('전라',     0.32, 0.62),
-  _RegionAnchor('경상',     0.62, 0.52),
-  _RegionAnchor('제주',     0.28, 0.92),
-];
+/// 모든 권역의 lon/lat 범위 (프로젝션용)
+class _GeoBounds {
+  final double minLon, maxLon, minLat, maxLat;
+  const _GeoBounds(this.minLon, this.maxLon, this.minLat, this.maxLat);
+
+  double get aspectRatio {
+    final midLat = (minLat + maxLat) / 2;
+    final lonRange = (maxLon - minLon) * math.cos(midLat * math.pi / 180);
+    final latRange = maxLat - minLat;
+    return lonRange / latRange;
+  }
+}
+
+/// 권역 라벨 anchor (실제 lat/lon)
+/// 서울/경기/인천 라벨 겹침 방지하려고 수동 좌표
+class _LabelAnchor {
+  final String label;
+  final Offset latLon; // (lon, lat)
+  final bool showStats; // 매장 수 표시 여부
+  const _LabelAnchor(this.label, this.latLon, {this.showStats = true});
+}
+
+const Map<String, List<_LabelAnchor>> _regionLabels = {
+  '서울': [_LabelAnchor('서울', Offset(126.98, 37.55))],
+  '경기·인천': [
+    _LabelAnchor('경기', Offset(127.30, 37.65)),
+    _LabelAnchor('인천', Offset(126.55, 37.45), showStats: false),
+  ],
+  '강원': [_LabelAnchor('강원', Offset(128.30, 37.85))],
+  '충청': [_LabelAnchor('충청', Offset(127.20, 36.60))],
+  '경상': [_LabelAnchor('경상', Offset(128.55, 36.10))],
+  '전라': [_LabelAnchor('전라', Offset(126.95, 35.30))],
+  '제주': [_LabelAnchor('제주', Offset(126.55, 33.40))],
+};
+
+class _KoreaGeoData {
+  final List<_KoreaRegionGeom> regions;
+  final _GeoBounds bounds;
+  const _KoreaGeoData(this.regions, this.bounds);
+
+  /// (lon, lat) → 위젯 좌표
+  Offset project(Offset latLon, Size size) {
+    final midLat = (bounds.minLat + bounds.maxLat) / 2;
+    final lonRangeRaw = bounds.maxLon - bounds.minLon;
+    final latRangeRaw = bounds.maxLat - bounds.minLat;
+    final lonRange = lonRangeRaw * math.cos(midLat * math.pi / 180);
+    final latRange = latRangeRaw;
+
+    final mapAspect = lonRange / latRange;
+    final widgetAspect = size.width / size.height;
+
+    double drawW, drawH, offX, offY;
+    if (widgetAspect > mapAspect) {
+      drawH = size.height;
+      drawW = drawH * mapAspect;
+      offX = (size.width - drawW) / 2;
+      offY = 0;
+    } else {
+      drawW = size.width;
+      drawH = drawW / mapAspect;
+      offX = 0;
+      offY = (size.height - drawH) / 2;
+    }
+
+    final nx = (latLon.dx - bounds.minLon) / lonRangeRaw;
+    final ny = 1 - (latLon.dy - bounds.minLat) / latRangeRaw;
+    return Offset(offX + nx * drawW, offY + ny * drawH);
+  }
+}
+
+/// 폐곡선의 부호 있는 면적 (절댓값이 진짜 면적)
+double _ringArea(List<Offset> ring) {
+  if (ring.length < 3) return 0;
+  double a = 0;
+  for (int i = 0; i < ring.length; i++) {
+    final j = (i + 1) % ring.length;
+    a += ring[i].dx * ring[j].dy - ring[j].dx * ring[i].dy;
+  }
+  return a.abs() / 2;
+}
+
+Future<_KoreaGeoData> loadKoreaGeoData() async {
+  final raw =
+      await rootBundle.loadString('assets/maps/korea_provinces.geojson');
+  final json = jsonDecode(raw) as Map<String, dynamic>;
+  final features = json['features'] as List;
+
+  double minLon = double.infinity, maxLon = -double.infinity;
+  double minLat = double.infinity, maxLat = -double.infinity;
+
+  List<Offset> parseRing(List ring) {
+    final pts = <Offset>[];
+    for (final pt in ring) {
+      final lon = (pt[0] as num).toDouble();
+      final lat = (pt[1] as num).toDouble();
+      pts.add(Offset(lon, lat));
+    }
+    return pts;
+  }
+
+  final byRegion = <String, List<List<Offset>>>{};
+
+  for (final f in features) {
+    final pname = f['properties']['name'] as String;
+    final region = _provinceToRegion[pname];
+    if (region == null) continue;
+
+    final geom = f['geometry'] as Map<String, dynamic>;
+    final type = geom['type'] as String;
+    final coords = geom['coordinates'] as List;
+
+    final allRings = <List<Offset>>[];
+    if (type == 'Polygon') {
+      for (final ring in coords) {
+        allRings.add(parseRing(ring as List));
+      }
+    } else if (type == 'MultiPolygon') {
+      for (final poly in coords) {
+        for (final ring in (poly as List)) {
+          allRings.add(parseRing(ring as List));
+        }
+      }
+    }
+    if (allRings.isEmpty) continue;
+
+    // 시도별 가장 큰 ring 하나만 keep → 작은 섬 자동 제거
+    allRings.sort((a, b) => _ringArea(b).compareTo(_ringArea(a)));
+    final mainRing = allRings.first;
+
+    // 다운샘플/smoothing 모두 제거 — 원본 점 그대로 사용
+    // → 인접 시도 경계가 데이터 그대로 정확히 맞물림
+    for (final p in mainRing) {
+      if (p.dx < minLon) minLon = p.dx;
+      if (p.dx > maxLon) maxLon = p.dx;
+      if (p.dy < minLat) minLat = p.dy;
+      if (p.dy > maxLat) maxLat = p.dy;
+    }
+
+    byRegion.putIfAbsent(region, () => []).add(mainRing);
+  }
+
+  const order = ['강원', '경상', '전라', '충청', '경기·인천', '제주', '서울'];
+  final regions = order
+      .where((n) => byRegion.containsKey(n))
+      .map((n) => _KoreaRegionGeom(n, byRegion[n]!))
+      .toList();
+
+  return _KoreaGeoData(
+    regions,
+    _GeoBounds(minLon, maxLon, minLat, maxLat),
+  );
+}
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -1421,11 +1761,13 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   late Future<List<RegionStats>> _statsFuture;
+  late Future<_KoreaGeoData> _geoFuture;
 
   @override
   void initState() {
     super.initState();
     _statsFuture = fetchRegionStats();
+    _geoFuture = loadKoreaGeoData();
   }
 
   Future<void> _refresh() async {
@@ -1438,11 +1780,9 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F4E79),
-        foregroundColor: Colors.white,
         title: const Text(
           '전국 지도',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
         ),
         actions: [
           IconButton(
@@ -1455,7 +1795,9 @@ class _MapScreenState extends State<MapScreen> {
         future: _statsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: CircularProgressIndicator(color: BB.neonPurple),
+            );
           }
           if (snapshot.hasError) {
             return Center(
@@ -1465,12 +1807,20 @@ class _MapScreenState extends State<MapScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(Icons.error_outline,
-                        size: 48, color: Colors.red),
+                        size: 48, color: BB.neonRed),
                     const SizedBox(height: 12),
-                    Text('${snapshot.error}', textAlign: TextAlign.center),
+                    Text(
+                      '${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: BB.textDim),
+                    ),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: _refresh,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: BB.neonPurple,
+                        foregroundColor: BB.bg,
+                      ),
                       child: const Text('다시 시도'),
                     ),
                   ],
@@ -1484,102 +1834,95 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               // 모드 바
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                color: Colors.grey.shade100,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: const BoxDecoration(
+                  color: BB.surface,
+                  border: Border(
+                    bottom: BorderSide(color: BB.border),
+                  ),
+                ),
                 child: Row(
                   children: [
                     const Text('📊 ', style: TextStyle(fontSize: 16)),
                     const Text(
                       '매장 수 모드',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: BB.text,
+                      ),
                     ),
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
-                        vertical: 2,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.amber.shade100,
+                        color: BB.neonYellow.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: BB.neonYellow.withOpacity(0.4),
+                        ),
                       ),
-                      child: Text(
+                      child: const Text(
                         '평점/도장깨기 모드는 Phase 2',
                         style: TextStyle(
                           fontSize: 10,
-                          color: Colors.amber.shade900,
+                          color: BB.neonYellow,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              // 지도 영역
+              // 인터랙티브 한국 지도 (실제 GeoJSON 기반, hover로 입체화)
               Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // SVG의 viewBox 비율: 1771 x 1672 ≈ 1.06
-                    const svgAspect = 1771.627 / 1672.414;
-                    double w = constraints.maxWidth * 0.95;
-                    double h = w / svgAspect;
-                    if (h > constraints.maxHeight * 0.95) {
-                      h = constraints.maxHeight * 0.95;
-                      w = h * svgAspect;
-                    }
-                    return Center(
-                      child: SizedBox(
-                        width: w,
-                        height: h,
-                        child: Stack(
-                          children: [
-                            // 배경: 실제 한국 지도 SVG
-                            Positioned.fill(
-                              child: SvgPicture.asset(
-                                'assets/maps/south_korea.svg',
-                                fit: BoxFit.contain,
-                                placeholderBuilder: (_) => const Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                            ),
-                            // 오버레이: 각 권역 배지
-                            ..._regionAnchors.map((anchor) {
-                              final stat = stats[anchor.name];
-                              final color =
-                                  stat?.color ?? const Color(0xFF757575);
-                              final count = stat?.storeCount ?? 0;
-                              final grade = stat?.grade ?? 'NONE';
-                              // 배지 크기는 매장 수에 따라 약간 변화
-                              final badgeSize = 56.0 + (count > 0 ? 6.0 : 0.0);
-                              return Positioned(
-                                left: anchor.cx * w - badgeSize / 2,
-                                top: anchor.cy * h - badgeSize / 2,
-                                width: badgeSize,
-                                height: badgeSize,
-                                child: GestureDetector(
-                                  onTap: () => _onRegionTap(anchor.name, stat),
-                                  child: _RegionBadge(
-                                    name: anchor.name,
-                                    count: count,
-                                    grade: grade,
-                                    color: color,
-                                  ),
-                                ),
-                              );
-                            }),
-                          ],
+                child: FutureBuilder<_KoreaGeoData>(
+                  future: _geoFuture,
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: BB.neonPurple,
                         ),
-                      ),
+                      );
+                    }
+                    if (snap.hasError || snap.data == null) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            '지도 데이터 로드 실패\n${snap.error ?? ''}',
+                            style: const TextStyle(color: BB.textDim),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      );
+                    }
+                    return _InteractiveKoreaMap(
+                      geo: snap.data!,
+                      stats: stats,
+                      onTap: (name) => _onRegionTap(name, stats[name]),
                     );
                   },
                 ),
               ),
               // 범례
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: Colors.grey.shade50,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: const BoxDecoration(
+                  color: BB.surface,
+                  border: Border(
+                    top: BorderSide(color: BB.border),
+                  ),
+                ),
                 child: Wrap(
                   spacing: 8,
                   runSpacing: 6,
@@ -1612,70 +1955,94 @@ class _MapScreenState extends State<MapScreen> {
     showModalBottomSheet(
       context: context,
       builder: (_) {
+        final color = stat?.color ?? const Color(0xFF757575);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 핸들 바
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: BB.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Container(
-                    width: 16,
-                    height: 16,
+                    width: 14,
+                    height: 14,
                     decoration: BoxDecoration(
-                      color: stat?.color ?? Colors.grey,
-                      borderRadius: BorderRadius.circular(4),
+                      color: color,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withOpacity(0.6),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Text(
                     regionName,
                     style: const TextStyle(
                       fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w800,
+                      color: BB.text,
+                      letterSpacing: -0.3,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
-                      vertical: 2,
+                      vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
+                      color: color.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: color.withOpacity(0.4)),
                     ),
                     child: Text(
                       '${stat?.grade ?? 'NONE'}급',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w700,
+                        color: color,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Text(
                 '등록된 매장 ${stat?.storeCount ?? 0}개',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
-                  color: Colors.grey.shade700,
+                  color: BB.textDim,
                 ),
               ),
               const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
+                  color: BB.surfaceHigh,
+                  borderRadius: BorderRadius.circular(BB.radiusS),
+                  border: Border.all(color: BB.border),
                 ),
                 child: Text(
                   (stat?.storeCount ?? 0) == 0
                       ? '아직 등록된 매장이 없어요. Phase 2에서 매장 데이터 확장 예정입니다.'
                       : '$regionName 지역 매장 리스트 보기는 다음 단계에서!',
-                  style: const TextStyle(fontSize: 13),
+                  style: const TextStyle(fontSize: 13, color: BB.textDim),
                 ),
               ),
             ],
@@ -1686,68 +2053,245 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-class _RegionBadge extends StatelessWidget {
-  final String name;
-  final int count;
-  final String grade;
-  final Color color;
-  const _RegionBadge({
-    required this.name,
-    required this.count,
-    required this.grade,
-    required this.color,
+/// 인터랙티브 한국 지도 (CustomPaint + hover 입체화)
+class _InteractiveKoreaMap extends StatefulWidget {
+  final _KoreaGeoData geo;
+  final Map<String, RegionStats> stats;
+  final void Function(String name) onTap;
+  const _InteractiveKoreaMap({
+    required this.geo,
+    required this.stats,
+    required this.onTap,
   });
 
   @override
+  State<_InteractiveKoreaMap> createState() => _InteractiveKoreaMapState();
+}
+
+class _InteractiveKoreaMapState extends State<_InteractiveKoreaMap> {
+  String? _hovered;
+
+  Path _buildPath(_KoreaRegionGeom region, Size size) {
+    // 시도별 ring을 각각 closed path로 만든 후 union으로 묶음
+    // → 내부 경계선 사라지고 권역이 하나의 외곽선으로 표시됨
+    Path? combined;
+    for (final ring in region.rings) {
+      if (ring.isEmpty) continue;
+      final p0 = widget.geo.project(ring[0], size);
+      final single = Path()..moveTo(p0.dx, p0.dy);
+      for (int i = 1; i < ring.length; i++) {
+        final p = widget.geo.project(ring[i], size);
+        single.lineTo(p.dx, p.dy);
+      }
+      single.close();
+      combined = combined == null
+          ? single
+          : Path.combine(PathOperation.union, combined, single);
+    }
+    return combined ?? Path();
+  }
+
+  /// 작은 권역 우선 hit test (서울 → 큰 권역 순)
+  String? _hitTest(Offset point, Size size) {
+    final ordered = [...widget.geo.regions]..sort(
+        (a, b) {
+          if (a.name == '서울') return -1;
+          if (b.name == '서울') return 1;
+          return 0;
+        },
+      );
+    for (final r in ordered) {
+      if (_buildPath(r, size).contains(point)) return r.name;
+    }
+    return null;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.92),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
-              shadows: [
-                Shadow(color: Colors.black54, blurRadius: 2),
-              ],
+    return LayoutBuilder(
+      builder: (context, c) {
+        final size = Size(c.maxWidth, c.maxHeight);
+        return MouseRegion(
+          onHover: (e) {
+            final h = _hitTest(e.localPosition, size);
+            if (h != _hovered) setState(() => _hovered = h);
+          },
+          onExit: (_) {
+            if (_hovered != null) setState(() => _hovered = null);
+          },
+          cursor: _hovered != null
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (d) {
+              final h = _hitTest(d.localPosition, size);
+              if (h != null) widget.onTap(h);
+            },
+            child: CustomPaint(
+              painter: _KoreaMapPainter(
+                geo: widget.geo,
+                stats: widget.stats,
+                hoveredRegion: _hovered,
+              ),
+              size: size,
             ),
           ),
-          const SizedBox(height: 1),
-          Text(
-            '$count',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-          Text(
-            grade == 'NONE' ? '-' : grade,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
+}
+
+class _KoreaMapPainter extends CustomPainter {
+  final _KoreaGeoData geo;
+  final Map<String, RegionStats> stats;
+  final String? hoveredRegion;
+
+  _KoreaMapPainter({
+    required this.geo,
+    required this.stats,
+    required this.hoveredRegion,
+  });
+
+  Path _buildPath(_KoreaRegionGeom region, Size size) {
+    final path = Path()..fillType = PathFillType.evenOdd;
+    for (final ring in region.rings) {
+      if (ring.isEmpty) continue;
+      final p0 = geo.project(ring[0], size);
+      path.moveTo(p0.dx, p0.dy);
+      for (int i = 1; i < ring.length; i++) {
+        final p = geo.project(ring[i], size);
+        path.lineTo(p.dx, p.dy);
+      }
+      path.close();
+    }
+    return path;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 큰 권역 → 작은 권역 (서울 마지막에 위에 그려짐)
+    final ordered = [
+      ...geo.regions.where((r) => r.name != hoveredRegion && r.name != '서울'),
+      ...geo.regions.where((r) => r.name == '서울' && r.name != hoveredRegion),
+    ];
+    for (final r in ordered) {
+      _drawRegion(canvas, size, r, isHovered: false);
+    }
+    // 호버된 권역 마지막에 (최상단)
+    if (hoveredRegion != null) {
+      final hov = geo.regions.firstWhere(
+        (r) => r.name == hoveredRegion,
+        orElse: () => geo.regions.first,
+      );
+      _drawRegion(canvas, size, hov, isHovered: true);
+    }
+  }
+
+  void _drawRegion(
+    Canvas canvas,
+    Size size,
+    _KoreaRegionGeom region, {
+    required bool isHovered,
+  }) {
+    final stat = stats[region.name];
+    final hasStore = (stat?.storeCount ?? 0) > 0;
+    final baseColor = stat?.color ?? const Color(0xFF424258);
+    final path = _buildPath(region, size);
+    final bounds = path.getBounds();
+    final center = bounds.center;
+
+    canvas.save();
+    if (isHovered) {
+      canvas.translate(center.dx, center.dy - 6);
+      canvas.scale(1.06);
+      canvas.translate(-center.dx, -center.dy);
+
+      canvas.drawShadow(path, Colors.black, 16, false);
+
+      final glow = Paint()
+        ..color = baseColor.withOpacity(0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+      canvas.drawPath(path, glow);
+    }
+
+    // 채우기
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = hasStore
+            ? baseColor.withOpacity(isHovered ? 0.9 : 0.55)
+            : (isHovered ? const Color(0xFF2D2D44) : const Color(0xFF1F1F33))
+        ..style = PaintingStyle.fill,
+    );
+
+    // 보더 — 권역 외곽선 (union된 path라 내부 시도 경계는 안 그림)
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = isHovered
+            ? baseColor
+            : hasStore
+                ? baseColor.withOpacity(0.85)
+                : const Color(0xFF3A3A55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isHovered ? 2.5 : 1.4
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    canvas.restore();
+
+    // 라벨 — anchor 지점에 그림 (스케일 영향 안 받게 restore 후 그림)
+    final count = stat?.storeCount ?? 0;
+    final grade = stat?.grade ?? 'NONE';
+    final anchors = _regionLabels[region.name] ?? const [];
+    for (final anchor in anchors) {
+      final pos = geo.project(anchor.latLon, size);
+      final lifted = isHovered ? pos.translate(0, -6) : pos;
+
+      final tp = TextPainter(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: anchor.label,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: isHovered ? 13 : 11,
+                fontWeight: FontWeight.w800,
+                shadows: const [
+                  Shadow(color: Colors.black, blurRadius: 4),
+                ],
+              ),
+            ),
+            if (anchor.showStats)
+              TextSpan(
+                text: '\n$count${grade == 'NONE' ? '' : ' · $grade'}',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.95),
+                  fontSize: isHovered ? 11 : 9,
+                  fontWeight: FontWeight.w600,
+                  shadows: const [
+                    Shadow(color: Colors.black, blurRadius: 4),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      tp.paint(
+        canvas,
+        Offset(lifted.dx - tp.width / 2, lifted.dy - tp.height / 2),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_KoreaMapPainter old) =>
+      old.hoveredRegion != hoveredRegion || old.stats != stats;
 }
 
 class _LegendChip extends StatelessWidget {
@@ -1769,7 +2313,10 @@ class _LegendChip extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 11)),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: BB.textDim),
+        ),
       ],
     );
   }
@@ -1844,7 +2391,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
                   vertical: 14,
                 ),
                 title: const Text(
-                  '방방',
+                  '모두의 방탈출',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 20,
@@ -1897,36 +2444,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
             // === 본문 ===
             SliverList(
               delegate: SliverChildListDelegate([
-                const SizedBox(height: 8),
-
-                // 슬로건
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '오늘은 어떤 방을\n탈출해볼까?',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: BB.text,
-                          height: 1.25,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      SizedBox(height: 6),
-                      Text(
-                        '전국 방탈출 매장을 지도와 리스트로',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: BB.textDim,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // === Bento Grid 1: 메인 액션 ===
                 Padding(
@@ -2511,40 +3029,48 @@ class SeoulMapScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1F4E79),
-        foregroundColor: Colors.white,
         title: const Text(
           '서울 자치구',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
         ),
       ),
       body: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            color: Colors.grey.shade100,
+            decoration: const BoxDecoration(
+              color: BB.surface,
+              border: Border(bottom: BorderSide(color: BB.border)),
+            ),
             child: Row(
               children: [
                 const Text('🔍 ', style: TextStyle(fontSize: 16)),
                 const Text(
                   '서울 25개 자치구',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: BB.text,
+                  ),
                 ),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 2,
+                    vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.amber.shade100,
+                    color: BB.neonYellow.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: BB.neonYellow.withOpacity(0.4),
+                    ),
                   ),
-                  child: Text(
+                  child: const Text(
                     '자치구 SVG / 통계는 Phase 2',
                     style: TextStyle(
                       fontSize: 10,
-                      color: Colors.amber.shade900,
+                      color: BB.neonYellow,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -2576,19 +3102,19 @@ class SeoulMapScreen extends StatelessWidget {
                               },
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.shade100,
-                                  borderRadius: BorderRadius.circular(6),
+                                  color: BB.surface,
+                                  borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: Colors.blue.shade300,
+                                    color: BB.neonCyan.withOpacity(0.3),
                                   ),
                                 ),
                                 child: Center(
                                   child: Text(
                                     name,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue.shade900,
+                                      fontWeight: FontWeight.w800,
+                                      color: BB.neonCyan,
                                     ),
                                   ),
                                 ),
