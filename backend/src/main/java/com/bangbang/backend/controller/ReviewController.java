@@ -1,9 +1,15 @@
 package com.bangbang.backend.controller;
 
 import com.bangbang.backend.dto.AuthDto.ErrorResponse;
+import com.bangbang.backend.dto.ClearLogDto;
 import com.bangbang.backend.dto.ReviewDto;
+import com.bangbang.backend.dto.StoreDto;
+import com.bangbang.backend.dto.ThemeDto;
 import com.bangbang.backend.dto.UserDto;
+import com.bangbang.backend.repository.ClearLogRepository;
 import com.bangbang.backend.repository.ReviewRepository;
+import com.bangbang.backend.repository.StoreRepository;
+import com.bangbang.backend.repository.ThemeRepository;
 import com.bangbang.backend.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,11 +35,20 @@ public class ReviewController {
 
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
+    private final ThemeRepository themeRepository;
+    private final StoreRepository storeRepository;
+    private final ClearLogRepository clearLogRepository;
 
     public ReviewController(ReviewRepository reviewRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            ThemeRepository themeRepository,
+                            StoreRepository storeRepository,
+                            ClearLogRepository clearLogRepository) {
         this.reviewRepository = reviewRepository;
         this.userRepository = userRepository;
+        this.themeRepository = themeRepository;
+        this.storeRepository = storeRepository;
+        this.clearLogRepository = clearLogRepository;
     }
 
     // GET /api/themes/{themeId}/reviews - 리뷰 목록 + 평점 집계
@@ -96,7 +111,7 @@ public class ReviewController {
                 .body(new ErrorResponse("이미 이 테마에 리뷰를 작성했습니다"));
         }
 
-        // 4. 저장
+        // 4. 리뷰 저장
         ReviewDto review = new ReviewDto();
         review.setThemeId(themeId);
         review.setUserId(user.getId());
@@ -106,6 +121,27 @@ public class ReviewController {
         review.setIsSuccess(req.getIsSuccess());
         review.setCreatedAt(LocalDateTime.now());
         reviewRepository.save(review);
+
+        // 5. 방문(클리어) 기록 자동 생성 (도장깨기 데이터 기반)
+        if (!clearLogRepository.existsByUserIdAndThemeId(
+                user.getId(), themeId)) {
+            ThemeDto theme = themeRepository.findById(themeId).orElse(null);
+            Long storeId = theme == null ? null : theme.getStoreId();
+            String region = null;
+            if (storeId != null) {
+                StoreDto store =
+                    storeRepository.findById(storeId).orElse(null);
+                region = store == null ? null : store.getRegion();
+            }
+            ClearLogDto log = new ClearLogDto();
+            log.setUserId(user.getId());
+            log.setThemeId(themeId);
+            log.setStoreId(storeId);
+            log.setRegion(region);
+            log.setIsSuccess(req.getIsSuccess());
+            log.setClearedAt(LocalDateTime.now());
+            clearLogRepository.save(log);
+        }
 
         return ResponseEntity.ok(review);
     }

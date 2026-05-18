@@ -396,6 +396,49 @@ Future<List<MyReview>> fetchMyReviews() async {
   throw Exception(body['message'] ?? '내 리뷰를 불러오지 못했습니다');
 }
 
+class VisitedRoom {
+  final int themeId;
+  final String themeName;
+  final String storeName;
+  final String region;
+  final bool isSuccess;
+  final String clearedAt;
+
+  VisitedRoom({
+    required this.themeId,
+    required this.themeName,
+    required this.storeName,
+    required this.region,
+    required this.isSuccess,
+    required this.clearedAt,
+  });
+
+  factory VisitedRoom.fromJson(Map<String, dynamic> j) => VisitedRoom(
+        themeId: j['themeId'],
+        themeName: j['themeName'] ?? '',
+        storeName: j['storeName'] ?? '-',
+        region: j['region'] ?? '',
+        isSuccess: j['isSuccess'] ?? false,
+        clearedAt: (j['clearedAt'] ?? '').toString().split('T').first,
+      );
+}
+
+/// GET /api/users/me/clear-logs (로그인 필요)
+Future<List<VisitedRoom>> fetchVisitedRooms() async {
+  final token = AuthStore.current?.token;
+  if (token == null) throw Exception('로그인이 필요합니다');
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/users/me/clear-logs'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  if (res.statusCode == 200) {
+    final List<dynamic> data = json.decode(utf8.decode(res.bodyBytes));
+    return data.map((e) => VisitedRoom.fromJson(e)).toList();
+  }
+  final body = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(body['message'] ?? '방문 기록을 불러오지 못했습니다');
+}
+
 /// GET /api/themes/popular?limit=N - 인기 테마
 Future<List<EscapeTheme>> fetchPopularThemes({int limit = 5}) async {
   final url =
@@ -4009,10 +4052,26 @@ class _MyPageScreenState extends State<MyPageScreen> {
               );
             },
           ),
-          const _MenuItem(
+          _MenuItem(
             icon: Icons.check_circle_outline,
             label: '방문한 방',
-            badge: 'Phase 2',
+            onTap: () {
+              if (AuthStore.current == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('로그인이 필요합니다'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const VisitedRoomsScreen(),
+                ),
+              );
+            },
           ),
           const _MenuItem(
             icon: Icons.emoji_events_outlined,
@@ -4244,6 +4303,208 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+// ===== 방문한 방 화면 =====
+class VisitedRoomsScreen extends StatefulWidget {
+  const VisitedRoomsScreen({super.key});
+
+  @override
+  State<VisitedRoomsScreen> createState() => _VisitedRoomsScreenState();
+}
+
+class _VisitedRoomsScreenState extends State<VisitedRoomsScreen> {
+  late Future<List<VisitedRoom>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = fetchVisitedRooms();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '방문한 방',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: FutureBuilder<List<VisitedRoom>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: BB.neonPurple),
+            );
+          }
+          if (snap.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '${snap.error}'.replaceFirst('Exception: ', ''),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: BB.textDim),
+                ),
+              ),
+            );
+          }
+          final rooms = snap.data ?? [];
+          if (rooms.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_outline,
+                      size: 56, color: BB.textFaint),
+                  SizedBox(height: 12),
+                  Text(
+                    '아직 방문한 방이 없어요',
+                    style: TextStyle(color: BB.textDim, fontSize: 14),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '리뷰를 작성하면 방문 기록에 추가돼요',
+                    style: TextStyle(color: BB.textFaint, fontSize: 12),
+                  ),
+                ],
+              ),
+            );
+          }
+          final successCount = rooms.where((r) => r.isSuccess).length;
+          return Column(
+            children: [
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF1A0F2E), Color(0xFF2E1A4D)],
+                  ),
+                  borderRadius: BorderRadius.circular(BB.radius),
+                  border: Border.all(color: BB.border),
+                ),
+                child: Row(
+                  children: [
+                    _stat('방문', '${rooms.length}', BB.neonCyan),
+                    _divider(),
+                    _stat('성공', '$successCount', BB.neonGreen),
+                    _divider(),
+                    _stat('실패', '${rooms.length - successCount}',
+                        BB.neonRed),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: rooms.length,
+                  itemBuilder: (context, i) {
+                    final r = rooms[i];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: BB.surface,
+                        borderRadius: BorderRadius.circular(BB.radius),
+                        border: Border.all(color: BB.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: (r.isSuccess
+                                      ? BB.neonGreen
+                                      : BB.neonRed)
+                                  .withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              r.isSuccess ? Icons.check : Icons.close,
+                              color:
+                                  r.isSuccess ? BB.neonGreen : BB.neonRed,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  r.themeName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: BB.text,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${r.storeName} · ${r.region}',
+                                  style: const TextStyle(
+                                    color: BB.textDim,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            r.clearedAt,
+                            style: const TextStyle(
+                              color: BB.textFaint,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _stat(String label, String value, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(color: BB.textDim, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _divider() => Container(
+        width: 1,
+        height: 32,
+        color: BB.border,
+      );
 }
 
 // ===== 내가 쓴 리뷰 화면 =====
