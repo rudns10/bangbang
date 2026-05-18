@@ -136,24 +136,127 @@ public class AdminController {
             return ResponseEntity.badRequest()
                 .body(Map.of("message", "매장명이 없습니다"));
         }
-        boolean dup = storeRepository.findAll().stream()
-            .anyMatch(s -> req.getPlaceName().equals(s.getName()));
+        boolean dup = (req.getKakaoId() != null
+                && !req.getKakaoId().isBlank()
+                && storeRepository.existsByKakaoId(req.getKakaoId()))
+            || storeRepository.findAll().stream()
+                .anyMatch(s -> req.getPlaceName().equals(s.getName()));
         if (dup) {
             return ResponseEntity.badRequest()
                 .body(Map.of("message", "이미 등록된 매장입니다"));
         }
+        storeRepository.save(toStore(req));
+        return ResponseEntity.ok(Map.of("added", true));
+    }
+
+    private StoreDto toStore(SearchResult req) {
         StoreDto s = new StoreDto();
+        s.setKakaoId(req.getKakaoId());
         s.setName(req.getPlaceName());
         s.setRegion(req.getRegion());
         s.setSubRegion(req.getSubRegion());
-        s.setAddress(req.getRoadAddress() == null || req.getRoadAddress().isBlank()
-            ? req.getAddress() : req.getRoadAddress());
-        s.setGenre("미분류"); // 카카오는 장르 정보 없음 → 추후 관리자 보정
-        s.setThemeCount(0);   // 테마는 별도 등록 전까지 0
+        s.setAddress(
+            req.getRoadAddress() == null || req.getRoadAddress().isBlank()
+                ? req.getAddress() : req.getRoadAddress());
+        s.setGenre("미분류");
+        s.setThemeCount(0);
         s.setLatitude(req.getLat());
         s.setLongitude(req.getLng());
-        storeRepository.save(s);
-        return ResponseEntity.ok(s);
+        return s;
+    }
+
+    // 전국 일괄 가져오기 키워드 (주요 지역 ~35개)
+    private static final List<String> BULK_KEYWORDS = List.of(
+        "홍대 방탈출", "강남 방탈출", "건대 방탈출", "신촌 방탈출",
+        "잠실 방탈출", "대학로 방탈출", "노원 방탈출", "성수 방탈출",
+        "영등포 방탈출", "수원 방탈출", "인천 방탈출", "부천 방탈출",
+        "일산 방탈출", "성남 방탈출", "안산 방탈출", "의정부 방탈출",
+        "평택 방탈출", "용인 방탈출", "춘천 방탈출", "원주 방탈출",
+        "강릉 방탈출", "대전 방탈출", "천안 방탈출", "청주 방탈출",
+        "충주 방탈출", "대구 방탈출", "부산 방탈출", "울산 방탈출",
+        "포항 방탈출", "창원 방탈출", "김해 방탈출", "광주 방탈출",
+        "전주 방탈출", "여수 방탈출", "제주 방탈출"
+    );
+
+    // POST /api/admin/import-bulk - 전국 주요 지역 일괄 가져오기
+    @PostMapping("/import-bulk")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<?> importBulk(
+        @RequestHeader(value = "Authorization", required = false) String auth
+    ) {
+        String deny = adminCheck(auth);
+        if (deny != null) {
+            return ResponseEntity.status(403).body(Map.of("message", deny));
+        }
+        if (kakaoKey == null || kakaoKey.isBlank()) {
+            return ResponseEntity.status(500)
+                .body(Map.of("message", "카카오 REST 키 미설정"));
+        }
+
+        int added = 0;
+        int skipped = 0;
+        for (String kw : BULK_KEYWORDS) {
+            for (int page = 1; page <= 3; page++) {
+                final int p = page;
+                Map<String, Object> body;
+                try {
+                    body = kakao.get()
+                        .uri(uri -> uri
+                            .path("/v2/local/search/keyword.json")
+                            .queryParam("query", kw)
+                            .queryParam("page", p)
+                            .queryParam("size", 15)
+                            .build())
+                        .header("Authorization", "KakaoAK " + kakaoKey)
+                        .retrieve()
+                        .body(Map.class);
+                } catch (Exception e) {
+                    break; // 해당 키워드 중단, 다음 키워드로
+                }
+                if (body == null
+                    || !(body.get("documents") instanceof List<?> docs)
+                    || docs.isEmpty()) {
+                    break;
+                }
+                for (Object o : docs) {
+                    Map<String, Object> d = (Map<String, Object>) o;
+                    String kakaoId = str(d.get("id"));
+                    String name = str(d.get("place_name"));
+                    String cat = str(d.get("category_name"));
+                    // 방탈출 카테고리만 (음식점 등 노이즈 제거)
+                    if (!cat.contains("방탈출")) {
+                        continue;
+                    }
+                    if (kakaoId.isBlank()
+                        || storeRepository.existsByKakaoId(kakaoId)) {
+                        skipped++;
+                        continue;
+                    }
+                    String addr = str(d.get("address_name"));
+                    SearchResult sr = new SearchResult(
+                        kakaoId, name, addr,
+                        str(d.get("road_address_name")),
+                        str(d.get("phone")), cat,
+                        str(d.get("place_url")),
+                        parseDouble(d.get("y")),
+                        parseDouble(d.get("x")),
+                        regionOf(addr), subRegionOf(addr), false);
+                    storeRepository.save(toStore(sr));
+                    added++;
+                }
+                Map<String, Object> meta =
+                    (Map<String, Object>) body.get("meta");
+                if (meta != null
+                    && Boolean.TRUE.equals(meta.get("is_end"))) {
+                    break;
+                }
+            }
+        }
+        return ResponseEntity.ok(Map.of(
+            "added", added,
+            "skipped", skipped,
+            "total", storeRepository.count()
+        ));
     }
 
     // === 권역 매핑 ===

@@ -26,6 +26,7 @@ public class StoreDto {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private String kakaoId;     // 카카오 장소 ID (중복 제거용, 수동 등록은 null)
     private String name;        // 매장명
     private String region;      // 권역 (서울/경기·인천/강원/충청/경상/전라/제주)
     private String subRegion;   // 세부 지역 (홍대/합정/강남...)

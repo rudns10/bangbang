@@ -179,6 +179,39 @@ Future<List<RegionStats>> fetchRegionStats() async {
   }
 }
 
+/// GET /api/regions/rating - 평점 모드 (RegionStats로 매핑)
+Future<List<RegionStats>> fetchRegionRating() async {
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/regions/rating'),
+  );
+  if (res.statusCode != 200) {
+    throw Exception('평점 통계를 불러오지 못했습니다 (${res.statusCode})');
+  }
+  final List<dynamic> data = json.decode(utf8.decode(res.bodyBytes));
+  return data.map((j) {
+    final avg = j['averageRating'];
+    return RegionStats(
+      region: j['region'],
+      storeCount: j['reviewCount'] ?? 0, // 리뷰 수 (0이면 회색 처리)
+      grade: avg == null ? '리뷰없음' : '★${(avg as num).toStringAsFixed(1)}',
+      colorHex: j['color'] ?? '#757575',
+    );
+  }).toList();
+}
+
+/// 도장깨기 모드 - region-progress를 RegionStats로 매핑 (로그인 필요)
+Future<List<RegionStats>> fetchRegionConquest() async {
+  final c = await fetchConquest();
+  return c.regions
+      .map((r) => RegionStats(
+            region: r.region,
+            storeCount: r.visitedStores, // 0이면 회색
+            grade: '${r.percent}%',
+            colorHex: r.colorHex,
+          ))
+      .toList();
+}
+
 // ===== 인증 (자체 로그인) =====
 
 class AuthUser {
@@ -994,6 +1027,18 @@ Future<void> adminAddStore(KakaoPlace place) async {
   if (res.statusCode == 200) return;
   final b = json.decode(utf8.decode(res.bodyBytes));
   throw Exception(b['message'] ?? '저장 실패 (${res.statusCode})');
+}
+
+/// POST /api/admin/import-bulk - 전국 주요 지역 일괄 가져오기
+Future<Map<String, dynamic>> adminImportBulk() async {
+  final token = AuthStore.current?.token;
+  final res = await http.post(
+    Uri.parse('http://localhost:3000/api/admin/import-bulk'),
+    headers: {if (token != null) 'Authorization': 'Bearer $token'},
+  );
+  final b = json.decode(utf8.decode(res.bodyBytes));
+  if (res.statusCode == 200) return b as Map<String, dynamic>;
+  throw Exception(b['message'] ?? '일괄 가져오기 실패 (${res.statusCode})');
 }
 
 /// GET /api/themes/popular?limit=N - 인기 테마
@@ -3077,9 +3122,12 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
+enum MapMode { count, rating, conquest }
+
 class _MapScreenState extends State<MapScreen> {
   late Future<List<RegionStats>> _statsFuture;
   late Future<_KoreaGeoData> _geoFuture;
+  MapMode _mode = MapMode.count;
 
   @override
   void initState() {
@@ -3088,9 +3136,37 @@ class _MapScreenState extends State<MapScreen> {
     _geoFuture = loadKoreaGeoData();
   }
 
+  Future<List<RegionStats>> _fetchForMode(MapMode m) {
+    switch (m) {
+      case MapMode.count:
+        return fetchRegionStats();
+      case MapMode.rating:
+        return fetchRegionRating();
+      case MapMode.conquest:
+        return fetchRegionConquest();
+    }
+  }
+
+  void _switchMode(MapMode m) {
+    if (m == _mode) return;
+    if (m == MapMode.conquest && AuthStore.current == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('도장깨기 모드는 로그인이 필요합니다 (마이 탭)'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _mode = m;
+      _statsFuture = _fetchForMode(m);
+    });
+  }
+
   Future<void> _refresh() async {
     setState(() {
-      _statsFuture = fetchRegionStats();
+      _statsFuture = _fetchForMode(_mode);
     });
   }
 
@@ -3150,50 +3226,23 @@ class _MapScreenState extends State<MapScreen> {
           final stats = {for (var s in snapshot.data!) s.region: s};
           return Column(
             children: [
-              // 모드 바
+              // 모드 토글 바
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
+                  horizontal: 12,
                   vertical: 10,
                 ),
                 decoration: const BoxDecoration(
                   color: BB.surface,
-                  border: Border(
-                    bottom: BorderSide(color: BB.border),
-                  ),
+                  border: Border(bottom: BorderSide(color: BB.border)),
                 ),
                 child: Row(
                   children: [
-                    const Text('📊 ', style: TextStyle(fontSize: 16)),
-                    const Text(
-                      '매장 수 모드',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: BB.text,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: BB.neonYellow.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: BB.neonYellow.withOpacity(0.4),
-                        ),
-                      ),
-                      child: const Text(
-                        '평점/도장깨기 모드는 Phase 2',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: BB.neonYellow,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                    _modeChip('📊 매장 수', MapMode.count),
+                    const SizedBox(width: 6),
+                    _modeChip('⭐ 평점', MapMode.rating),
+                    const SizedBox(width: 6),
+                    _modeChip('🏆 도장깨기', MapMode.conquest),
                   ],
                 ),
               ),
@@ -3245,14 +3294,7 @@ class _MapScreenState extends State<MapScreen> {
                   spacing: 8,
                   runSpacing: 6,
                   alignment: WrapAlignment.center,
-                  children: const [
-                    _LegendChip('S 50+', Color(0xFFC62828)),
-                    _LegendChip('A 30~49', Color(0xFFEF6C00)),
-                    _LegendChip('B 15~29', Color(0xFFF9A825)),
-                    _LegendChip('C 5~14', Color(0xFF9E9D24)),
-                    _LegendChip('D 1~4', Color(0xFFBDBDBD)),
-                    _LegendChip('0개', Color(0xFF757575)),
-                  ],
+                  children: _legendForMode(),
                 ),
               ),
             ],
@@ -3261,6 +3303,69 @@ class _MapScreenState extends State<MapScreen> {
       ),
       bottomNavigationBar: const _BangbangBottomNav(currentIndex: 1),
     );
+  }
+
+  Widget _modeChip(String label, MapMode m) {
+    final active = _mode == m;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _switchMode(m),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: active
+                ? BB.neonPurple.withOpacity(0.18)
+                : BB.bg,
+            borderRadius: BorderRadius.circular(BB.radiusS),
+            border: Border.all(
+              color: active ? BB.neonPurple : BB.border,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: active ? BB.neonPurple : BB.textDim,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _legendForMode() {
+    switch (_mode) {
+      case MapMode.count:
+        return const [
+          _LegendChip('S 50+', Color(0xFFC62828)),
+          _LegendChip('A 30~49', Color(0xFFEF6C00)),
+          _LegendChip('B 15~29', Color(0xFFF9A825)),
+          _LegendChip('C 5~14', Color(0xFF9E9D24)),
+          _LegendChip('D 1~4', Color(0xFFBDBDBD)),
+          _LegendChip('0개', Color(0xFF757575)),
+        ];
+      case MapMode.rating:
+        return const [
+          _LegendChip('4.5+', Color(0xFF1B5E20)),
+          _LegendChip('4.0+', Color(0xFF43A047)),
+          _LegendChip('3.5+', Color(0xFF9E9D24)),
+          _LegendChip('3.0+', Color(0xFFF9A825)),
+          _LegendChip('3.0-', Color(0xFFEF6C00)),
+          _LegendChip('리뷰없음', Color(0xFF757575)),
+        ];
+      case MapMode.conquest:
+        return const [
+          _LegendChip('100%', Color(0xFFA78BFA)),
+          _LegendChip('81%+', Color(0xFF7C3AED)),
+          _LegendChip('51%+', Color(0xFF2563EB)),
+          _LegendChip('21%+', Color(0xFF3B82F6)),
+          _LegendChip('1%+', Color(0xFF93C5FD)),
+          _LegendChip('미정복', Color(0xFF757575)),
+        ];
+    }
   }
 
   void _onRegionTap(String regionName, RegionStats? stat) {
@@ -5191,6 +5296,7 @@ class _AdminAddStoreScreenState extends State<AdminAddStoreScreen> {
   List<KakaoPlace> _results = [];
   bool _loading = false;
   bool _loadingMore = false;
+  bool _bulkRunning = false;
   String? _error;
   int _total = 0;
   int _page = 1;
@@ -5200,6 +5306,74 @@ class _AdminAddStoreScreenState extends State<AdminAddStoreScreen> {
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _bulkImport() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: BB.surface,
+        title: const Text('전국 일괄 가져오기',
+            style: TextStyle(color: BB.text, fontSize: 16)),
+        content: const Text(
+          '전국 주요 지역(약 35개)의 방탈출을 카카오에서 검색해 '
+          '한 번에 가져옵니다. 1~2분 걸릴 수 있어요.',
+          style: TextStyle(color: BB.textDim, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소',
+                style: TextStyle(color: BB.textDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('가져오기',
+                style: TextStyle(color: BB.neonPurple)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _bulkRunning = true);
+    try {
+      final r = await adminImportBulk();
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: BB.surface,
+            title: const Text('완료',
+                style: TextStyle(color: BB.text, fontSize: 16)),
+            content: Text(
+              '신규 ${r['added']}개 추가\n'
+              '중복 ${r['skipped']}개 건너뜀\n'
+              '전체 매장 ${r['total']}개',
+              style: const TextStyle(
+                  color: BB.textDim, fontSize: 13, height: 1.6),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('확인',
+                    style: TextStyle(color: BB.neonPurple)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _bulkRunning = false);
+    }
   }
 
   Future<void> _search() async {
@@ -5284,8 +5458,42 @@ class _AdminAddStoreScreenState extends State<AdminAddStoreScreen> {
       ),
       body: Column(
         children: [
+          // 전국 일괄 가져오기
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton.icon(
+                icon: _bulkRunning
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: BB.bg,
+                        ),
+                      )
+                    : const Icon(Icons.cloud_download, size: 18),
+                label: Text(
+                  _bulkRunning ? '가져오는 중... (1~2분)' : '전국 일괄 가져오기',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: BB.neonCyan,
+                  foregroundColor: BB.bg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(BB.radius),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: _bulkRunning ? null : _bulkImport,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Row(
               children: [
                 Expanded(
