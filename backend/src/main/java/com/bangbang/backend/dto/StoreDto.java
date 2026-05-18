@@ -1,17 +1,31 @@
 package com.bangbang.backend.dto;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * 매장 엔티티 (JPA + API 응답 겸용).
+ * MVP라 별도 엔티티/DTO 분리 안 함. Phase 2에서 도메인 복잡해지면 분리 예정.
+ */
+@Entity
+@Table(name = "store")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class StoreDto {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     private String name;        // 매장명
     private String region;      // 권역 (서울/경기·인천/강원/충청/경상/전라/제주)
     private String subRegion;   // 세부 지역 (홍대/합정/강남...)

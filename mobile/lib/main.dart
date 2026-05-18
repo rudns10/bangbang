@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ===== 디자인 시스템 (Dark + Neon) =====
 class BB {
@@ -30,7 +31,9 @@ class BB {
   static const radiusS = 12.0;
 }
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthStore.load(); // 저장된 로그인 복원
   runApp(const BangbangApp());
 }
 
@@ -156,6 +159,104 @@ Future<List<RegionStats>> fetchRegionStats() async {
   } else {
     throw Exception('지도 통계를 불러오지 못했습니다 (${response.statusCode})');
   }
+}
+
+// ===== 인증 (자체 로그인) =====
+
+class AuthUser {
+  final int userId;
+  final String username;
+  final String nickname;
+  final String token;
+
+  AuthUser({
+    required this.userId,
+    required this.username,
+    required this.nickname,
+    required this.token,
+  });
+
+  factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
+        userId: j['userId'],
+        username: j['username'],
+        nickname: j['nickname'] ?? j['username'],
+        token: j['token'],
+      );
+}
+
+/// 토큰/유저 정보를 기기에 저장 (shared_preferences).
+/// 앱 재시작해도 로그인 유지. 웹에선 localStorage 사용.
+class AuthStore {
+  static const _kToken = 'auth_token';
+  static const _kUserId = 'auth_user_id';
+  static const _kUsername = 'auth_username';
+  static const _kNickname = 'auth_nickname';
+
+  static AuthUser? current;
+
+  static Future<void> save(AuthUser u) async {
+    current = u;
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kToken, u.token);
+    await sp.setInt(_kUserId, u.userId);
+    await sp.setString(_kUsername, u.username);
+    await sp.setString(_kNickname, u.nickname);
+  }
+
+  static Future<AuthUser?> load() async {
+    final sp = await SharedPreferences.getInstance();
+    final token = sp.getString(_kToken);
+    if (token == null) return null;
+    current = AuthUser(
+      userId: sp.getInt(_kUserId) ?? 0,
+      username: sp.getString(_kUsername) ?? '',
+      nickname: sp.getString(_kNickname) ?? '',
+      token: token,
+    );
+    return current;
+  }
+
+  static Future<void> clear() async {
+    current = null;
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_kToken);
+    await sp.remove(_kUserId);
+    await sp.remove(_kUsername);
+    await sp.remove(_kNickname);
+  }
+}
+
+/// POST /api/auth/signup
+Future<AuthUser> signup(String username, String password,
+    String nickname) async {
+  final res = await http.post(
+    Uri.parse('http://localhost:3000/api/auth/signup'),
+    headers: {'Content-Type': 'application/json'},
+    body: json.encode({
+      'username': username,
+      'password': password,
+      'nickname': nickname,
+    }),
+  );
+  final body = json.decode(utf8.decode(res.bodyBytes));
+  if (res.statusCode == 200) {
+    return AuthUser.fromJson(body);
+  }
+  throw Exception(body['message'] ?? '회원가입 실패 (${res.statusCode})');
+}
+
+/// POST /api/auth/login
+Future<AuthUser> login(String username, String password) async {
+  final res = await http.post(
+    Uri.parse('http://localhost:3000/api/auth/login'),
+    headers: {'Content-Type': 'application/json'},
+    body: json.encode({'username': username, 'password': password}),
+  );
+  final body = json.decode(utf8.decode(res.bodyBytes));
+  if (res.statusCode == 200) {
+    return AuthUser.fromJson(body);
+  }
+  throw Exception(body['message'] ?? '로그인 실패 (${res.statusCode})');
 }
 
 /// GET /api/themes/popular?limit=N - 인기 테마
@@ -751,36 +852,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
-          BottomNavigationBarItem(icon: Icon(Icons.list), label: '리스트'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.favorite_border),
-            label: '즐겨찾기',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: '마이',
-          ),
-        ],
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MapScreen()),
-            );
-          } else if (index >= 2) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('해당 탭은 곧 만들 거예요!'),
-                duration: Duration(seconds: 1),
-              ),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const _BangbangBottomNav(currentIndex: 0),
     );
   }
 
@@ -1941,6 +2013,7 @@ class _MapScreenState extends State<MapScreen> {
           );
         },
       ),
+      bottomNavigationBar: const _BangbangBottomNav(currentIndex: 1),
     );
   }
 
@@ -2716,32 +2789,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
-          BottomNavigationBarItem(icon: Icon(Icons.list), label: '리스트'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: '마이',
-          ),
-        ],
-        onTap: (index) {
-          if (index == 1) {
-            _openList();
-          } else if (index == 2) {
-            _openMap();
-          } else if (index == 3) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('마이 페이지는 곧 만들 거예요!'),
-                duration: Duration(seconds: 1),
-              ),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: const _BangbangBottomNav(currentIndex: 0),
     );
   }
 
@@ -3131,6 +3179,620 @@ class SeoulMapScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ===== 즐겨찾기 화면 =====
+
+class FavoritesScreen extends StatelessWidget {
+  const FavoritesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '즐겨찾기',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: BB.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: BB.neonPink.withOpacity(0.3),
+                  ),
+                ),
+                child: Icon(
+                  Icons.favorite_border,
+                  size: 56,
+                  color: BB.neonPink.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '아직 즐겨찾기가 없어요',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: BB.text,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '마음에 드는 매장이나 테마를\n♡ 아이콘으로 저장해보세요',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: BB.textDim,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 200,
+                height: 46,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.search, size: 18),
+                  label: const Text(
+                    '전체 매장 보기',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: BB.neonPurple,
+                    foregroundColor: BB.bg,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(BB.radius),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HomeScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '로그인 + 즐겨찾기 저장은 Phase 2',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: BB.textFaint,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: const _BangbangBottomNav(currentIndex: 2),
+    );
+  }
+}
+
+// ===== 마이 페이지 =====
+
+class MyPageScreen extends StatefulWidget {
+  const MyPageScreen({super.key});
+
+  @override
+  State<MyPageScreen> createState() => _MyPageScreenState();
+}
+
+class _MyPageScreenState extends State<MyPageScreen> {
+  AuthUser? get _user => AuthStore.current;
+
+  Future<void> _openLogin() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+    if (mounted) setState(() {}); // 로그인 후 화면 갱신
+  }
+
+  Future<void> _logout() async {
+    await AuthStore.clear();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loggedIn = _user != null;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '마이',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: ListView(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1A0F2E), Color(0xFF2E1A4D)],
+              ),
+              border: Border(bottom: BorderSide(color: BB.border)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: BB.surface,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: BB.neonPurple.withOpacity(0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    loggedIn ? Icons.person : Icons.person_outline,
+                    size: 40,
+                    color: loggedIn ? BB.neonPurple : BB.textDim,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  loggedIn ? _user!.nickname : '로그인이 필요합니다',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: BB.text,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  loggedIn
+                      ? '@${_user!.username}'
+                      : '리뷰 작성, 즐겨찾기, 도장깨기 기록을 저장하려면 로그인하세요',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: BB.textDim,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: loggedIn
+                      ? OutlinedButton.icon(
+                          icon: const Icon(Icons.logout, size: 16),
+                          label: const Text(
+                            '로그아웃',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: BB.textDim,
+                            side: const BorderSide(color: BB.border),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(BB.radius),
+                            ),
+                          ),
+                          onPressed: _logout,
+                        )
+                      : ElevatedButton.icon(
+                          icon: const Icon(Icons.login, size: 16),
+                          label: const Text(
+                            '로그인 / 회원가입',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: BB.neonPurple,
+                            foregroundColor: BB.bg,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(BB.radius),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: _openLogin,
+                        ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const _MenuItem(
+            icon: Icons.rate_review_outlined,
+            label: '내가 쓴 리뷰',
+            badge: 'Phase 2',
+          ),
+          const _MenuItem(
+            icon: Icons.check_circle_outline,
+            label: '방문한 방',
+            badge: 'Phase 2',
+          ),
+          const _MenuItem(
+            icon: Icons.emoji_events_outlined,
+            label: '도장깨기 진행도',
+            badge: 'Phase 2',
+          ),
+          const _MenuDivider(),
+          const _MenuItem(
+            icon: Icons.notifications_outlined,
+            label: '알림 설정',
+          ),
+          const _MenuItem(
+            icon: Icons.info_outline,
+            label: '앱 정보',
+          ),
+          const _MenuItem(
+            icon: Icons.description_outlined,
+            label: '약관 / 개인정보처리방침',
+          ),
+          const SizedBox(height: 24),
+          const Center(
+            child: Text(
+              '방방 v0.1.0 (MVP)',
+              style: TextStyle(
+                fontSize: 11,
+                color: BB.textFaint,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+      bottomNavigationBar: const _BangbangBottomNav(currentIndex: 3),
+    );
+  }
+}
+
+// ===== 로그인 / 회원가입 화면 =====
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  bool _isSignup = false;
+  bool _loading = false;
+  String? _error;
+
+  final _usernameCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _nicknameCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _usernameCtrl.dispose();
+    _passwordCtrl.dispose();
+    _nicknameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final username = _usernameCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _error = '아이디와 비밀번호를 입력하세요');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final user = _isSignup
+          ? await signup(username, password, _nicknameCtrl.text.trim())
+          : await login(username, password);
+      await AuthStore.save(user);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          _isSignup ? '회원가입' : '로그인',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            const Text(
+              '모두의 방탈출',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: BB.neonPurple,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 32),
+            _field(_usernameCtrl, '아이디', Icons.person_outline),
+            const SizedBox(height: 12),
+            _field(_passwordCtrl, '비밀번호', Icons.lock_outline,
+                obscure: true),
+            if (_isSignup) ...[
+              const SizedBox(height: 12),
+              _field(_nicknameCtrl, '닉네임 (선택)', Icons.badge_outlined),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: BB.neonRed.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(BB.radiusS),
+                  border: Border.all(color: BB.neonRed.withOpacity(0.4)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: BB.neonRed, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: BB.neonRed,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: BB.neonPurple,
+                  foregroundColor: BB.bg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(BB.radius),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: _loading ? null : _submit,
+                child: _loading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: BB.bg,
+                        ),
+                      )
+                    : Text(
+                        _isSignup ? '가입하기' : '로그인',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _loading
+                  ? null
+                  : () => setState(() {
+                        _isSignup = !_isSignup;
+                        _error = null;
+                      }),
+              style: TextButton.styleFrom(foregroundColor: BB.neonCyan),
+              child: Text(
+                _isSignup
+                    ? '이미 계정이 있나요? 로그인'
+                    : '계정이 없나요? 회원가입',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController c, String hint, IconData icon,
+      {bool obscure = false}) {
+    return TextField(
+      controller: c,
+      obscureText: obscure,
+      style: const TextStyle(color: BB.text),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: BB.textFaint),
+        prefixIcon: Icon(icon, color: BB.textDim, size: 20),
+        filled: true,
+        fillColor: BB.surface,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(BB.radius),
+          borderSide: const BorderSide(color: BB.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(BB.radius),
+          borderSide: const BorderSide(color: BB.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(BB.radius),
+          borderSide: const BorderSide(color: BB.neonPurple, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? badge;
+  const _MenuItem({
+    required this.icon,
+    required this.label,
+    this.badge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"$label"은 곧 만들 거예요'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: BB.textDim, size: 22),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: BB.text,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (badge != null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: BB.neonYellow.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: BB.neonYellow.withOpacity(0.4),
+                  ),
+                ),
+                child: Text(
+                  badge!,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: BB.neonYellow,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.chevron_right,
+              color: BB.textFaint,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuDivider extends StatelessWidget {
+  const _MenuDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      height: 1,
+      color: BB.border,
+    );
+  }
+}
+
+// ===== 공통 하단 네비게이션 =====
+
+class _BangbangBottomNav extends StatelessWidget {
+  final int currentIndex;
+  const _BangbangBottomNav({required this.currentIndex});
+
+  @override
+  Widget build(BuildContext context) {
+    return BottomNavigationBar(
+      currentIndex: currentIndex,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
+        BottomNavigationBarItem(icon: Icon(Icons.map), label: '지도'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.favorite_border),
+          label: '즐겨찾기',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.person_outline),
+          label: '마이',
+        ),
+      ],
+      onTap: (index) {
+        if (index == currentIndex) return;
+        Widget target;
+        switch (index) {
+          case 0:
+            target = const HomeMainScreen();
+            break;
+          case 1:
+            target = const MapScreen();
+            break;
+          case 2:
+            target = const FavoritesScreen();
+            break;
+          case 3:
+            target = const MyPageScreen();
+            break;
+          default:
+            return;
+        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => target),
+        );
+      },
     );
   }
 }
