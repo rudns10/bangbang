@@ -38,6 +38,8 @@ public class UserDto {
 
     private String nickname;
 
+    private Boolean admin; // 관리자 여부 (null/false = 일반)
+
     @JsonIgnore
     private String token; // 간이 세션 토큰 (로그인 시 발급)
 

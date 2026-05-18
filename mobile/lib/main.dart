@@ -168,12 +168,14 @@ class AuthUser {
   final String username;
   final String nickname;
   final String token;
+  final bool isAdmin;
 
   AuthUser({
     required this.userId,
     required this.username,
     required this.nickname,
     required this.token,
+    required this.isAdmin,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
@@ -181,6 +183,7 @@ class AuthUser {
         username: j['username'],
         nickname: j['nickname'] ?? j['username'],
         token: j['token'],
+        isAdmin: j['admin'] ?? false,
       );
 }
 
@@ -191,6 +194,7 @@ class AuthStore {
   static const _kUserId = 'auth_user_id';
   static const _kUsername = 'auth_username';
   static const _kNickname = 'auth_nickname';
+  static const _kAdmin = 'auth_admin';
 
   static AuthUser? current;
 
@@ -201,6 +205,7 @@ class AuthStore {
     await sp.setInt(_kUserId, u.userId);
     await sp.setString(_kUsername, u.username);
     await sp.setString(_kNickname, u.nickname);
+    await sp.setBool(_kAdmin, u.isAdmin);
   }
 
   static Future<AuthUser?> load() async {
@@ -212,6 +217,7 @@ class AuthStore {
       username: sp.getString(_kUsername) ?? '',
       nickname: sp.getString(_kNickname) ?? '',
       token: token,
+      isAdmin: sp.getBool(_kAdmin) ?? false,
     );
     return current;
   }
@@ -223,6 +229,7 @@ class AuthStore {
     await sp.remove(_kUserId);
     await sp.remove(_kUsername);
     await sp.remove(_kNickname);
+    await sp.remove(_kAdmin);
   }
 }
 
@@ -437,6 +444,113 @@ Future<List<VisitedRoom>> fetchVisitedRooms() async {
   }
   final body = json.decode(utf8.decode(res.bodyBytes));
   throw Exception(body['message'] ?? '방문 기록을 불러오지 못했습니다');
+}
+
+// ===== 관리자: 카카오 검색 import =====
+
+class KakaoPlace {
+  final String kakaoId;
+  final String placeName;
+  final String address;
+  final String roadAddress;
+  final String phone;
+  final String category;
+  final String kakaoUrl;
+  final double? lat;
+  final double? lng;
+  final String region;
+  final String subRegion;
+  bool alreadyAdded;
+
+  KakaoPlace({
+    required this.kakaoId,
+    required this.placeName,
+    required this.address,
+    required this.roadAddress,
+    required this.phone,
+    required this.category,
+    required this.kakaoUrl,
+    required this.lat,
+    required this.lng,
+    required this.region,
+    required this.subRegion,
+    required this.alreadyAdded,
+  });
+
+  factory KakaoPlace.fromJson(Map<String, dynamic> j) => KakaoPlace(
+        kakaoId: j['kakaoId'] ?? '',
+        placeName: j['placeName'] ?? '',
+        address: j['address'] ?? '',
+        roadAddress: j['roadAddress'] ?? '',
+        phone: j['phone'] ?? '',
+        category: j['category'] ?? '',
+        kakaoUrl: j['kakaoUrl'] ?? '',
+        lat: (j['lat'] as num?)?.toDouble(),
+        lng: (j['lng'] as num?)?.toDouble(),
+        region: j['region'] ?? '기타',
+        subRegion: j['subRegion'] ?? '',
+        alreadyAdded: j['alreadyAdded'] ?? false,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'kakaoId': kakaoId,
+        'placeName': placeName,
+        'address': address,
+        'roadAddress': roadAddress,
+        'phone': phone,
+        'category': category,
+        'kakaoUrl': kakaoUrl,
+        'lat': lat,
+        'lng': lng,
+        'region': region,
+        'subRegion': subRegion,
+        'alreadyAdded': alreadyAdded,
+      };
+}
+
+class KakaoSearchResult {
+  final List<KakaoPlace> results;
+  final bool isEnd;
+  final int totalCount;
+  KakaoSearchResult(this.results, this.isEnd, this.totalCount);
+}
+
+/// GET /api/admin/search?query=...
+Future<KakaoSearchResult> adminSearch(String query, {int page = 1}) async {
+  final token = AuthStore.current?.token;
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/admin/search')
+        .replace(queryParameters: {'query': query, 'page': '$page'}),
+    headers: {if (token != null) 'Authorization': 'Bearer $token'},
+  );
+  if (res.statusCode != 200) {
+    final b = json.decode(utf8.decode(res.bodyBytes));
+    throw Exception(b['message'] ?? '검색 실패 (${res.statusCode})');
+  }
+  final j = json.decode(utf8.decode(res.bodyBytes));
+  return KakaoSearchResult(
+    ((j['results'] ?? []) as List)
+        .map((e) => KakaoPlace.fromJson(e))
+        .toList(),
+    j['isEnd'] ?? true,
+    j['totalCount'] ?? 0,
+  );
+}
+
+/// POST /api/admin/stores
+Future<void> adminAddStore(KakaoPlace place) async {
+  final token = AuthStore.current?.token;
+  final res = await http.post(
+    Uri.parse('http://localhost:3000/api/admin/stores'),
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      if (token != null) 'Authorization': 'Bearer $token',
+    },
+    body: json.encode(place.toJson()),
+  );
+  if (res.statusCode == 200) return;
+  final b = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(b['message'] ?? '저장 실패 (${res.statusCode})');
 }
 
 /// GET /api/themes/popular?limit=N - 인기 테마
@@ -4091,6 +4205,21 @@ class _MyPageScreenState extends State<MyPageScreen> {
             icon: Icons.description_outlined,
             label: '약관 / 개인정보처리방침',
           ),
+          if (AuthStore.current?.isAdmin == true) ...[
+            const _MenuDivider(),
+            _MenuItem(
+              icon: Icons.add_business_outlined,
+              label: '관리자: 매장 추가',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AdminAddStoreScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 24),
           const Center(
             child: Text(
@@ -4300,6 +4429,371 @@ class _LoginScreenState extends State<LoginScreen> {
           borderRadius: BorderRadius.circular(BB.radius),
           borderSide: const BorderSide(color: BB.neonPurple, width: 1.5),
         ),
+      ),
+    );
+  }
+}
+
+// ===== 관리자: 매장 추가 화면 =====
+class AdminAddStoreScreen extends StatefulWidget {
+  const AdminAddStoreScreen({super.key});
+
+  @override
+  State<AdminAddStoreScreen> createState() => _AdminAddStoreScreenState();
+}
+
+class _AdminAddStoreScreenState extends State<AdminAddStoreScreen> {
+  final _ctrl = TextEditingController(text: '방탈출');
+  List<KakaoPlace> _results = [];
+  bool _loading = false;
+  bool _loadingMore = false;
+  String? _error;
+  int _total = 0;
+  int _page = 1;
+  bool _isEnd = true;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final q = _ctrl.text.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+      _page = 1;
+      _results = [];
+    });
+    try {
+      final r = await adminSearch(q, page: 1);
+      setState(() {
+        _results = r.results;
+        _total = r.totalCount;
+        _isEnd = r.isEnd;
+      });
+    } catch (e) {
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || _isEnd) return;
+    setState(() => _loadingMore = true);
+    try {
+      final r = await adminSearch(_ctrl.text.trim(), page: _page + 1);
+      setState(() {
+        _page += 1;
+        _results = [..._results, ...r.results];
+        _isEnd = r.isEnd;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _add(KakaoPlace p) async {
+    try {
+      await adminAddStore(p);
+      setState(() => p.alreadyAdded = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"${p.placeName}" 추가됨'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '관리자: 매장 추가',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    style: const TextStyle(color: BB.text),
+                    onSubmitted: (_) => _search(),
+                    decoration: InputDecoration(
+                      hintText: '예: 홍대 방탈출, 강남 방탈출',
+                      hintStyle: const TextStyle(color: BB.textFaint),
+                      filled: true,
+                      fillColor: BB.surface,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(BB.radius),
+                        borderSide: const BorderSide(color: BB.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(BB.radius),
+                        borderSide: const BorderSide(color: BB.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(BB.radius),
+                        borderSide: const BorderSide(
+                            color: BB.neonPurple, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: BB.neonPurple,
+                      foregroundColor: BB.bg,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(BB.radius),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: _loading ? null : _search,
+                    child: const Icon(Icons.search),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_total > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '카카오 검색 결과 $_total개 중 상위 ${_results.length}개',
+                style: const TextStyle(color: BB.textDim, fontSize: 12),
+              ),
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(color: BB.neonPurple),
+                  )
+                : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: BB.neonRed),
+                          ),
+                        ),
+                      )
+                    : _results.isEmpty
+                        ? const Center(
+                            child: Text(
+                              '검색어를 입력하고 검색하세요',
+                              style: TextStyle(color: BB.textDim),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(
+                                16, 0, 16, 16),
+                            itemCount: _results.length + 1,
+                            itemBuilder: (context, i) {
+                              if (i == _results.length) {
+                                if (_isEnd) {
+                                  return Padding(
+                                    padding:
+                                        const EdgeInsets.only(top: 8),
+                                    child: Center(
+                                      child: Text(
+                                        '검색 결과 끝 (총 ${_results.length}개)',
+                                        style: const TextStyle(
+                                          color: BB.textFaint,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: BB.neonPurple,
+                                      side: const BorderSide(
+                                          color: BB.neonPurple),
+                                      minimumSize:
+                                          const Size.fromHeight(46),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(
+                                                BB.radius),
+                                      ),
+                                    ),
+                                    onPressed:
+                                        _loadingMore ? null : _loadMore,
+                                    child: _loadingMore
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              color: BB.neonPurple,
+                                            ),
+                                          )
+                                        : Text(
+                                            '더 보기 (${_results.length}/$_total)',
+                                            style: const TextStyle(
+                                              fontWeight:
+                                                  FontWeight.w700,
+                                            ),
+                                          ),
+                                  ),
+                                );
+                              }
+                              final p = _results[i];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: BB.surface,
+                                  borderRadius:
+                                      BorderRadius.circular(BB.radius),
+                                  border: Border.all(color: BB.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            p.placeName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: BB.text,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            p.roadAddress.isEmpty
+                                                ? p.address
+                                                : p.roadAddress,
+                                            style: const TextStyle(
+                                              color: BB.textDim,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            children: [
+                                              _tag(p.region, BB.neonCyan),
+                                              const SizedBox(width: 4),
+                                              _tag(p.subRegion,
+                                                  BB.neonPurple),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    p.alreadyAdded
+                                        ? const Padding(
+                                            padding:
+                                                EdgeInsets.symmetric(
+                                                    horizontal: 8),
+                                            child: Icon(
+                                              Icons.check_circle,
+                                              color: BB.neonGreen,
+                                              size: 26,
+                                            ),
+                                          )
+                                        : ElevatedButton(
+                                            style:
+                                                ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  BB.neonPurple,
+                                              foregroundColor: BB.bg,
+                                              shape:
+                                                  RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        10),
+                                              ),
+                                              elevation: 0,
+                                              padding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 10),
+                                            ),
+                                            onPressed: () => _add(p),
+                                            child: const Text(
+                                              '추가',
+                                              style: TextStyle(
+                                                fontWeight:
+                                                    FontWeight.w800,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tag(String text, Color color) {
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+            color: color, fontSize: 10, fontWeight: FontWeight.w600),
       ),
     );
   }

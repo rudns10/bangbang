@@ -54,12 +54,13 @@ public class AuthController {
                 ? req.getUsername()
                 : req.getNickname());
         user.setToken(UUID.randomUUID().toString());
+        user.setAdmin(false);
         user.setCreatedAt(LocalDateTime.now());
         userRepository.save(user);
 
         return ResponseEntity.ok(new AuthResponse(
             user.getId(), user.getUsername(), user.getNickname(),
-            user.getToken()));
+            user.getToken(), Boolean.TRUE.equals(user.getAdmin())));
     }
 
     // POST /api/auth/login - 로그인
@@ -79,7 +80,7 @@ public class AuthController {
 
         return ResponseEntity.ok(new AuthResponse(
             user.getId(), user.getUsername(), user.getNickname(),
-            user.getToken()));
+            user.getToken(), Boolean.TRUE.equals(user.getAdmin())));
     }
 
     // GET /api/auth/me 대용 - 토큰으로 본인 정보 조회
@@ -95,6 +96,6 @@ public class AuthController {
         }
         return ResponseEntity.ok(new AuthResponse(
             user.getId(), user.getUsername(), user.getNickname(),
-            user.getToken()));
+            user.getToken(), Boolean.TRUE.equals(user.getAdmin())));
     }
 }

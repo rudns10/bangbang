@@ -35,6 +35,7 @@ public class AuthDto {
         private String username;
         private String nickname;
         private String token;
+        private boolean admin;
     }
 
     @Getter
