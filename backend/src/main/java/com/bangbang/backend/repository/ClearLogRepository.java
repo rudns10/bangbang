@@ -8,5 +8,7 @@ public interface ClearLogRepository extends JpaRepository<ClearLogDto, Long> {
 
     List<ClearLogDto> findByUserIdOrderByClearedAtDesc(Long userId);
 
+    long countByUserId(Long userId);
+
     boolean existsByUserIdAndThemeId(Long userId, Long themeId);
 }

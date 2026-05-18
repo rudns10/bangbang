@@ -7,7 +7,13 @@ import com.bangbang.backend.repository.ReviewRepository;
 import com.bangbang.backend.repository.StoreRepository;
 import com.bangbang.backend.repository.ThemeRepository;
 import com.bangbang.backend.repository.UserRepository;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.http.ResponseEntity;
@@ -118,6 +124,130 @@ public class UserController {
             .toList();
 
         return ResponseEntity.ok(result);
+    }
+
+    // GET /api/users/me/profile - 닉네임 + 방문 수 + 칭호
+    @GetMapping("/me/profile")
+    public ResponseEntity<?> profile(
+        @RequestHeader(value = "Authorization", required = false) String auth
+    ) {
+        UserDto user = userFromAuth(auth);
+        if (user == null) {
+            return ResponseEntity.status(401)
+                .body(new ErrorResponse("로그인이 필요합니다"));
+        }
+        int visited = (int) clearLogRepository.countByUserId(user.getId());
+        return ResponseEntity.ok(new Profile(
+            user.getId(),
+            user.getUsername(),
+            user.getNickname(),
+            Boolean.TRUE.equals(user.getAdmin()),
+            visited,
+            title(visited)
+        ));
+    }
+
+    // 방문한 방 수 기준 칭호
+    private static String title(int visited) {
+        if (visited >= 100) return "숙련자";
+        if (visited >= 50) return "중급자";
+        return "초보자";
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class Profile {
+        private Long userId;
+        private String username;
+        private String nickname;
+        private boolean admin;
+        private int visitedCount;
+        private String title;
+    }
+
+    // 기획서 7개 권역
+    private static final List<String> ALL_REGIONS = Arrays.asList(
+        "서울", "경기·인천", "강원", "충청", "경상", "전라", "제주");
+
+    // GET /api/users/me/region-progress - 권역별 도장깨기 진행도
+    @GetMapping("/me/region-progress")
+    public ResponseEntity<?> regionProgress(
+        @RequestHeader(value = "Authorization", required = false) String auth
+    ) {
+        UserDto user = userFromAuth(auth);
+        if (user == null) {
+            return ResponseEntity.status(401)
+                .body(new ErrorResponse("로그인이 필요합니다"));
+        }
+
+        // 권역별 전체 매장 수
+        Map<String, Long> totalByRegion = storeRepository.findAll().stream()
+            .filter(s -> s.getRegion() != null)
+            .collect(Collectors.groupingBy(
+                s -> s.getRegion(), Collectors.counting()));
+
+        // 내가 방문한 매장 (권역별 distinct storeId)
+        Map<String, Set<Long>> visitedByRegion = new java.util.HashMap<>();
+        for (var log : clearLogRepository
+                .findByUserIdOrderByClearedAtDesc(user.getId())) {
+            if (log.getRegion() == null || log.getStoreId() == null) continue;
+            visitedByRegion
+                .computeIfAbsent(log.getRegion(), k -> new HashSet<>())
+                .add(log.getStoreId());
+        }
+
+        List<RegionProgress> result = new ArrayList<>();
+        int totalVisited = 0;
+        int totalStores = 0;
+        for (String region : ALL_REGIONS) {
+            int total = totalByRegion.getOrDefault(region, 0L).intValue();
+            int visited = visitedByRegion
+                .getOrDefault(region, new HashSet<>()).size();
+            totalVisited += visited;
+            totalStores += total;
+            int pct = total == 0 ? 0 : (visited * 100 / total);
+            result.add(new RegionProgress(
+                region, total, visited, pct,
+                level(pct, visited), color(pct, visited)));
+        }
+        int overallPct =
+            totalStores == 0 ? 0 : (totalVisited * 100 / totalStores);
+
+        return ResponseEntity.ok(Map.of(
+            "regions", result,
+            "totalVisited", totalVisited,
+            "totalStores", totalStores,
+            "overallPercent", overallPct
+        ));
+    }
+
+    private static String level(int pct, int visited) {
+        if (visited == 0) return "미정복";
+        if (pct >= 100) return "완전정복";
+        if (pct >= 81) return "거의정복";
+        if (pct >= 51) return "정복중";
+        if (pct >= 21) return "탐험중";
+        return "시작";
+    }
+
+    private static String color(int pct, int visited) {
+        if (visited == 0) return "#757575";   // 회색
+        if (pct >= 100) return "#A78BFA";      // 무지개 대용 보라(네온)
+        if (pct >= 81) return "#7C3AED";       // 보라
+        if (pct >= 51) return "#2563EB";       // 진한 파랑
+        if (pct >= 21) return "#3B82F6";       // 중간 파랑
+        return "#93C5FD";                       // 연한 파랑
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class RegionProgress {
+        private String region;
+        private int totalStores;
+        private int visitedStores;
+        private int percent;
+        private String level;
+        private String color;
     }
 
     @Getter

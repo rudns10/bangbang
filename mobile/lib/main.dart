@@ -446,6 +446,118 @@ Future<List<VisitedRoom>> fetchVisitedRooms() async {
   throw Exception(body['message'] ?? '방문 기록을 불러오지 못했습니다');
 }
 
+// ===== 내 프로필 (칭호) =====
+
+class MyProfile {
+  final String username;
+  final String nickname;
+  final int visitedCount;
+  final String title; // 초보자 / 중급자 / 숙련자
+
+  MyProfile({
+    required this.username,
+    required this.nickname,
+    required this.visitedCount,
+    required this.title,
+  });
+
+  factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
+        username: j['username'] ?? '',
+        nickname: j['nickname'] ?? '',
+        visitedCount: j['visitedCount'] ?? 0,
+        title: j['title'] ?? '초보자',
+      );
+}
+
+/// GET /api/users/me/profile (로그인 필요)
+Future<MyProfile> fetchMyProfile() async {
+  final token = AuthStore.current?.token;
+  if (token == null) throw Exception('로그인이 필요합니다');
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/users/me/profile'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  if (res.statusCode == 200) {
+    return MyProfile.fromJson(json.decode(utf8.decode(res.bodyBytes)));
+  }
+  final b = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(b['message'] ?? '프로필을 불러오지 못했습니다');
+}
+
+// ===== 도장깨기 진행도 =====
+
+class RegionProgress {
+  final String region;
+  final int totalStores;
+  final int visitedStores;
+  final int percent;
+  final String level;
+  final String colorHex;
+
+  RegionProgress({
+    required this.region,
+    required this.totalStores,
+    required this.visitedStores,
+    required this.percent,
+    required this.level,
+    required this.colorHex,
+  });
+
+  factory RegionProgress.fromJson(Map<String, dynamic> j) => RegionProgress(
+        region: j['region'] ?? '',
+        totalStores: j['totalStores'] ?? 0,
+        visitedStores: j['visitedStores'] ?? 0,
+        percent: j['percent'] ?? 0,
+        level: j['level'] ?? '',
+        colorHex: j['color'] ?? '#757575',
+      );
+
+  Color get color {
+    final hex = colorHex.replaceFirst('#', '');
+    return Color(int.parse('FF$hex', radix: 16));
+  }
+}
+
+class ConquestProgress {
+  final List<RegionProgress> regions;
+  final int totalVisited;
+  final int totalStores;
+  final int overallPercent;
+
+  ConquestProgress({
+    required this.regions,
+    required this.totalVisited,
+    required this.totalStores,
+    required this.overallPercent,
+  });
+
+  factory ConquestProgress.fromJson(Map<String, dynamic> j) =>
+      ConquestProgress(
+        regions: ((j['regions'] ?? []) as List)
+            .map((e) => RegionProgress.fromJson(e))
+            .toList(),
+        totalVisited: j['totalVisited'] ?? 0,
+        totalStores: j['totalStores'] ?? 0,
+        overallPercent: j['overallPercent'] ?? 0,
+      );
+}
+
+/// GET /api/users/me/region-progress (로그인 필요)
+Future<ConquestProgress> fetchConquest() async {
+  final token = AuthStore.current?.token;
+  if (token == null) throw Exception('로그인이 필요합니다');
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/users/me/region-progress'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  if (res.statusCode == 200) {
+    return ConquestProgress.fromJson(
+        json.decode(utf8.decode(res.bodyBytes)));
+  }
+  final b = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(b['message'] ?? '진행도를 불러오지 못했습니다');
+}
+
 // ===== 관리자: 카카오 검색 import =====
 
 class KakaoPlace {
@@ -4022,18 +4134,41 @@ class MyPageScreen extends StatefulWidget {
 
 class _MyPageScreenState extends State<MyPageScreen> {
   AuthUser? get _user => AuthStore.current;
+  MyProfile? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    if (AuthStore.current == null) {
+      setState(() => _profile = null);
+      return;
+    }
+    try {
+      final p = await fetchMyProfile();
+      if (mounted) setState(() => _profile = p);
+    } catch (_) {
+      // 프로필 로드 실패해도 화면은 떠야 함 (칭호만 생략)
+    }
+  }
 
   Future<void> _openLogin() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
     );
-    if (mounted) setState(() {}); // 로그인 후 화면 갱신
+    if (mounted) {
+      setState(() {});
+      _loadProfile();
+    }
   }
 
   Future<void> _logout() async {
     await AuthStore.clear();
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _profile = null);
   }
 
   @override
@@ -4078,13 +4213,44 @@ class _MyPageScreenState extends State<MyPageScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  loggedIn ? _user!.nickname : '로그인이 필요합니다',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: BB.text,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        loggedIn ? _user!.nickname : '로그인이 필요합니다',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: BB.text,
+                        ),
+                      ),
+                    ),
+                    if (loggedIn && _profile != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: BB.neonPurple.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: BB.neonPurple.withOpacity(0.5),
+                          ),
+                        ),
+                        child: Text(
+                          _profile!.title,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: BB.neonPurple,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -4187,19 +4353,43 @@ class _MyPageScreenState extends State<MyPageScreen> {
               );
             },
           ),
-          const _MenuItem(
+          _MenuItem(
             icon: Icons.emoji_events_outlined,
             label: '도장깨기 진행도',
-            badge: 'Phase 2',
+            onTap: () {
+              if (AuthStore.current == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('로그인이 필요합니다'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ConquestScreen(),
+                ),
+              );
+            },
           ),
           const _MenuDivider(),
           const _MenuItem(
             icon: Icons.notifications_outlined,
             label: '알림 설정',
           ),
-          const _MenuItem(
+          _MenuItem(
             icon: Icons.info_outline,
             label: '앱 정보',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AppInfoScreen(),
+                ),
+              );
+            },
           ),
           const _MenuItem(
             icon: Icons.description_outlined,
@@ -4794,6 +4984,391 @@ class _AdminAddStoreScreenState extends State<AdminAddStoreScreen> {
         text,
         style: TextStyle(
             color: color, fontSize: 10, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+// ===== 앱 정보 화면 =====
+class AppInfoScreen extends StatelessWidget {
+  const AppInfoScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '앱 정보',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: ListView(
+        children: [
+          // 헤더
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2E1A4D), Color(0xFF1A0F2E)],
+              ),
+              border: Border(bottom: BorderSide(color: BB.border)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: BB.neonPurple.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: BB.neonPurple.withOpacity(0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.lock_open,
+                    size: 36,
+                    color: BB.neonPurple,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '모두의 방탈출',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: BB.text,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '전국 방탈출을 정복하자\n넌 어디까지 깨봤니?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: BB.textDim,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: BB.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: BB.border),
+                  ),
+                  child: const Text(
+                    'v0.1.0 (MVP)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: BB.textDim,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const _InfoRow(label: '제작자', value: 'BHAN'),
+          const _InfoDivider(),
+          const _InfoRow(label: '문의', value: 'rudns10@gmail.com'),
+          const _InfoDivider(),
+          const _InfoRow(label: '버전', value: 'v0.1.0 (MVP)'),
+          const _InfoDivider(),
+          const _InfoRow(
+            label: '장소 데이터',
+            value: '카카오 로컬',
+          ),
+          const SizedBox(height: 24),
+          const Center(
+            child: Text(
+              '© 2026 BHAN. All rights reserved.',
+              style: TextStyle(color: BB.textFaint, fontSize: 11),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: BB.textDim,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: BB.text,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoDivider extends StatelessWidget {
+  const _InfoDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Divider(
+      height: 1,
+      color: BB.border,
+      indent: 20,
+      endIndent: 20,
+    );
+  }
+}
+
+// ===== 도장깨기 진행도 화면 =====
+class ConquestScreen extends StatefulWidget {
+  const ConquestScreen({super.key});
+
+  @override
+  State<ConquestScreen> createState() => _ConquestScreenState();
+}
+
+class _ConquestScreenState extends State<ConquestScreen> {
+  late Future<ConquestProgress> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = fetchConquest();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '도장깨기 진행도',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: FutureBuilder<ConquestProgress>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: BB.neonPurple),
+            );
+          }
+          if (snap.hasError || snap.data == null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '${snap.error}'.replaceFirst('Exception: ', ''),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: BB.textDim),
+                ),
+              ),
+            );
+          }
+          final c = snap.data!;
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // 전체 요약
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF2E1A4D), Color(0xFF1A0F2E)],
+                  ),
+                  borderRadius: BorderRadius.circular(BB.radius),
+                  border: Border.all(
+                    color: BB.neonPurple.withOpacity(0.4),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      '전국 정복률',
+                      style: TextStyle(
+                        color: BB.textDim,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${c.overallPercent}%',
+                      style: const TextStyle(
+                        color: BB.neonPurple,
+                        fontSize: 40,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '방문 ${c.totalVisited} / 전체 ${c.totalStores} 매장',
+                      style: const TextStyle(
+                        color: BB.textDim,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: c.overallPercent / 100,
+                        minHeight: 8,
+                        backgroundColor: BB.surface,
+                        valueColor: const AlwaysStoppedAnimation(
+                            BB.neonPurple),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '권역별',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: BB.text,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ...c.regions.map((r) => Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: BB.surface,
+                      borderRadius: BorderRadius.circular(BB.radius),
+                      border: Border.all(color: BB.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: r.color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              r.region,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: BB.text,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: r.color.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                r.level,
+                                style: TextStyle(
+                                  color: r.color,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${r.visitedStores}/${r.totalStores}',
+                              style: const TextStyle(
+                                color: BB.textDim,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: LinearProgressIndicator(
+                                  value: r.percent / 100,
+                                  minHeight: 7,
+                                  backgroundColor: BB.bg,
+                                  valueColor:
+                                      AlwaysStoppedAnimation(r.color),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '${r.percent}%',
+                              style: TextStyle(
+                                color: r.color,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )),
+              const SizedBox(height: 12),
+              const Center(
+                child: Text(
+                  '리뷰를 작성하면 방문 기록이 쌓이고 정복률이 올라가요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: BB.textFaint, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          );
+        },
       ),
     );
   }
