@@ -259,6 +259,143 @@ Future<AuthUser> login(String username, String password) async {
   throw Exception(body['message'] ?? '로그인 실패 (${res.statusCode})');
 }
 
+// ===== 리뷰 =====
+
+class Review {
+  final int id;
+  final String username;
+  final double rating;
+  final String content;
+  final bool isSuccess;
+  final String createdAt;
+
+  Review({
+    required this.id,
+    required this.username,
+    required this.rating,
+    required this.content,
+    required this.isSuccess,
+    required this.createdAt,
+  });
+
+  factory Review.fromJson(Map<String, dynamic> j) => Review(
+        id: j['id'],
+        username: j['username'] ?? '익명',
+        rating: (j['rating'] as num).toDouble(),
+        content: j['content'] ?? '',
+        isSuccess: j['isSuccess'] ?? false,
+        createdAt: (j['createdAt'] ?? '').toString().split('T').first,
+      );
+}
+
+class ReviewList {
+  final int reviewCount;
+  final bool ratingVisible;
+  final double? averageRating;
+  final List<Review> reviews;
+
+  ReviewList({
+    required this.reviewCount,
+    required this.ratingVisible,
+    required this.averageRating,
+    required this.reviews,
+  });
+
+  factory ReviewList.fromJson(Map<String, dynamic> j) => ReviewList(
+        reviewCount: j['reviewCount'] ?? 0,
+        ratingVisible: j['ratingVisible'] ?? false,
+        averageRating: j['averageRating'] == null
+            ? null
+            : (j['averageRating'] as num).toDouble(),
+        reviews: ((j['reviews'] ?? []) as List)
+            .map((e) => Review.fromJson(e))
+            .toList(),
+      );
+}
+
+/// GET /api/themes/{themeId}/reviews
+Future<ReviewList> fetchReviews(int themeId) async {
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/themes/$themeId/reviews'),
+  );
+  if (res.statusCode == 200) {
+    return ReviewList.fromJson(json.decode(utf8.decode(res.bodyBytes)));
+  }
+  throw Exception('리뷰를 불러오지 못했습니다 (${res.statusCode})');
+}
+
+/// POST /api/themes/{themeId}/reviews (로그인 필요)
+Future<void> postReview(
+  int themeId, {
+  required double rating,
+  required String content,
+  required bool isSuccess,
+}) async {
+  final token = AuthStore.current?.token;
+  if (token == null) throw Exception('로그인이 필요합니다');
+  final res = await http.post(
+    Uri.parse('http://localhost:3000/api/themes/$themeId/reviews'),
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    },
+    body: json.encode({
+      'rating': rating,
+      'content': content,
+      'isSuccess': isSuccess,
+    }),
+  );
+  if (res.statusCode == 200) return;
+  final body = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(body['message'] ?? '리뷰 작성 실패 (${res.statusCode})');
+}
+
+class MyReview {
+  final int reviewId;
+  final int themeId;
+  final String themeName;
+  final double rating;
+  final String content;
+  final bool isSuccess;
+  final String createdAt;
+
+  MyReview({
+    required this.reviewId,
+    required this.themeId,
+    required this.themeName,
+    required this.rating,
+    required this.content,
+    required this.isSuccess,
+    required this.createdAt,
+  });
+
+  factory MyReview.fromJson(Map<String, dynamic> j) => MyReview(
+        reviewId: j['reviewId'],
+        themeId: j['themeId'],
+        themeName: j['themeName'] ?? '',
+        rating: (j['rating'] as num).toDouble(),
+        content: j['content'] ?? '',
+        isSuccess: j['isSuccess'] ?? false,
+        createdAt: (j['createdAt'] ?? '').toString().split('T').first,
+      );
+}
+
+/// GET /api/users/me/reviews (로그인 필요)
+Future<List<MyReview>> fetchMyReviews() async {
+  final token = AuthStore.current?.token;
+  if (token == null) throw Exception('로그인이 필요합니다');
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/users/me/reviews'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  if (res.statusCode == 200) {
+    final List<dynamic> data = json.decode(utf8.decode(res.bodyBytes));
+    return data.map((e) => MyReview.fromJson(e)).toList();
+  }
+  final body = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(body['message'] ?? '내 리뷰를 불러오지 못했습니다');
+}
+
 /// GET /api/themes/popular?limit=N - 인기 테마
 Future<List<EscapeTheme>> fetchPopularThemes({int limit = 5}) async {
   final url =
@@ -1493,76 +1630,10 @@ class ThemeDetailScreen extends StatelessWidget {
               ],
             ),
           ),
-          // 리뷰 자리 (placeholder)
+          // 리뷰 섹션
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      '리뷰',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: BB.text,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: BB.neonYellow.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: BB.neonYellow.withOpacity(0.4),
-                        ),
-                      ),
-                      child: const Text(
-                        'Coming soon',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: BB.neonYellow,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: BB.surface,
-                    borderRadius: BorderRadius.circular(BB.radius),
-                    border: Border.all(color: BB.border),
-                  ),
-                  child: const Column(
-                    children: [
-                      Icon(
-                        Icons.rate_review_outlined,
-                        size: 40,
-                        color: BB.textFaint,
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        '리뷰 기능은 다음 단계에서!',
-                        style: TextStyle(
-                          color: BB.textDim,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            child: _ReviewSection(themeId: theme.id),
           ),
           // 예약 버튼 (placeholder)
           Padding(
@@ -1634,6 +1705,503 @@ class ThemeDetailScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ===== 리뷰 섹션 위젯 =====
+class _ReviewSection extends StatefulWidget {
+  final int themeId;
+  const _ReviewSection({required this.themeId});
+
+  @override
+  State<_ReviewSection> createState() => _ReviewSectionState();
+}
+
+class _ReviewSectionState extends State<_ReviewSection> {
+  late Future<ReviewList> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = fetchReviews(widget.themeId);
+  }
+
+  void _reload() {
+    setState(() => _future = fetchReviews(widget.themeId));
+  }
+
+  Future<void> _openWriteDialog() async {
+    if (AuthStore.current == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('리뷰 작성은 로그인이 필요합니다 (마이 탭에서 로그인)'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ReviewWriteSheet(themeId: widget.themeId),
+    );
+    if (ok == true) _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '리뷰',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: BB.text,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _openWriteDialog,
+              icon: const Icon(Icons.edit, size: 15),
+              label: const Text('리뷰 쓰기', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: BB.neonPurple,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<ReviewList>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: CircularProgressIndicator(color: BB.neonPurple),
+                ),
+              );
+            }
+            if (snap.hasError || snap.data == null) {
+              return _box(Text(
+                '리뷰를 불러오지 못했어요\n${snap.error ?? ''}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: BB.textDim, fontSize: 13),
+              ));
+            }
+            final data = snap.data!;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 평점 요약
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: BB.surface,
+                    borderRadius: BorderRadius.circular(BB.radius),
+                    border: Border.all(color: BB.border),
+                  ),
+                  child: data.ratingVisible
+                      ? Row(
+                          children: [
+                            Text(
+                              data.averageRating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800,
+                                color: BB.neonYellow,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _stars(data.averageRating!),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '리뷰 ${data.reviewCount}개',
+                                  style: const TextStyle(
+                                    color: BB.textDim,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            const Icon(Icons.reviews_outlined,
+                                color: BB.textDim, size: 28),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '리뷰 모으는 중 (${data.reviewCount}/10)\n10개 이상이면 평점이 공개돼요',
+                                style: const TextStyle(
+                                  color: BB.textDim,
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 12),
+                if (data.reviews.isEmpty)
+                  _box(const Text(
+                    '아직 리뷰가 없어요. 첫 리뷰를 남겨보세요!',
+                    style: TextStyle(color: BB.textDim, fontSize: 13),
+                  ))
+                else
+                  ...data.reviews.map(_reviewCard),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _box(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: BB.surface,
+          borderRadius: BorderRadius.circular(BB.radius),
+          border: Border.all(color: BB.border),
+        ),
+        child: Center(child: child),
+      );
+
+  Widget _stars(double rating) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (i) {
+        IconData icon;
+        if (rating >= i + 1) {
+          icon = Icons.star;
+        } else if (rating >= i + 0.5) {
+          icon = Icons.star_half;
+        } else {
+          icon = Icons.star_border;
+        }
+        return Icon(icon, color: BB.neonYellow, size: 16);
+      }),
+    );
+  }
+
+  Widget _reviewCard(Review r) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: BB.surface,
+        borderRadius: BorderRadius.circular(BB.radius),
+        border: Border.all(color: BB.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                r.username,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: BB.text,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (r.isSuccess ? BB.neonGreen : BB.neonRed)
+                      .withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  r.isSuccess ? '탈출 성공' : '탈출 실패',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: r.isSuccess ? BB.neonGreen : BB.neonRed,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                r.createdAt,
+                style: const TextStyle(color: BB.textFaint, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _stars(r.rating),
+          const SizedBox(height: 8),
+          Text(
+            r.content,
+            style: const TextStyle(
+              color: BB.text,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===== 리뷰 작성 바텀시트 =====
+class _ReviewWriteSheet extends StatefulWidget {
+  final int themeId;
+  const _ReviewWriteSheet({required this.themeId});
+
+  @override
+  State<_ReviewWriteSheet> createState() => _ReviewWriteSheetState();
+}
+
+class _ReviewWriteSheetState extends State<_ReviewWriteSheet> {
+  double _rating = 3.0;
+  bool _isSuccess = true;
+  bool _submitting = false;
+  String? _error;
+  final _contentCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _contentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final content = _contentCtrl.text.trim();
+    if (content.length < 30) {
+      setState(() => _error = '후기는 30자 이상 작성해주세요 (현재 ${content.length}자)');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await postReview(
+        widget.themeId,
+        rating: _rating,
+        content: content,
+        isSuccess: _isSuccess,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _submitting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: BB.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '리뷰 쓰기',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: BB.text,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('별점', style: TextStyle(color: BB.textDim, fontSize: 13)),
+          const SizedBox(height: 6),
+          Row(
+            children: List.generate(5, (i) {
+              final v = i + 1.0;
+              return IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40),
+                icon: Icon(
+                  _rating >= v
+                      ? Icons.star
+                      : (_rating >= v - 0.5
+                          ? Icons.star_half
+                          : Icons.star_border),
+                  color: BB.neonYellow,
+                  size: 32,
+                ),
+                onPressed: () => setState(() => _rating = v),
+              );
+            })
+              ..add(
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    _rating.toStringAsFixed(1),
+                    style: const TextStyle(
+                      color: BB.neonYellow,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ),
+          ),
+          const SizedBox(height: 16),
+          const Text('탈출 결과',
+              style: TextStyle(color: BB.textDim, fontSize: 13)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _resultChip('탈출 성공', true),
+              const SizedBox(width: 8),
+              _resultChip('탈출 실패', false),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('후기 (30자 이상)',
+              style: TextStyle(color: BB.textDim, fontSize: 13)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _contentCtrl,
+            maxLines: 4,
+            style: const TextStyle(color: BB.text, fontSize: 14),
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: '방탈출 경험을 공유해주세요',
+              hintStyle: const TextStyle(color: BB.textFaint),
+              filled: true,
+              fillColor: BB.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(BB.radius),
+                borderSide: const BorderSide(color: BB.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(BB.radius),
+                borderSide: const BorderSide(color: BB.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(BB.radius),
+                borderSide:
+                    const BorderSide(color: BB.neonPurple, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${_contentCtrl.text.trim().length} / 30자',
+            style: TextStyle(
+              fontSize: 11,
+              color: _contentCtrl.text.trim().length >= 30
+                  ? BB.neonGreen
+                  : BB.textFaint,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: const TextStyle(color: BB.neonRed, fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: BB.neonPurple,
+                foregroundColor: BB.bg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(BB.radius),
+                ),
+                elevation: 0,
+              ),
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: BB.bg,
+                      ),
+                    )
+                  : const Text(
+                      '등록',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultChip(String label, bool value) {
+    final selected = _isSuccess == value;
+    final color = value ? BB.neonGreen : BB.neonRed;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _isSuccess = value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.15) : BB.surface,
+            borderRadius: BorderRadius.circular(BB.radiusS),
+            border: Border.all(
+              color: selected ? color : BB.border,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? color : BB.textDim,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -3420,10 +3988,26 @@ class _MyPageScreenState extends State<MyPageScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const _MenuItem(
+          _MenuItem(
             icon: Icons.rate_review_outlined,
             label: '내가 쓴 리뷰',
-            badge: 'Phase 2',
+            onTap: () {
+              if (AuthStore.current == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('로그인이 필요합니다'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MyReviewsScreen(),
+                ),
+              );
+            },
           ),
           const _MenuItem(
             icon: Icons.check_circle_outline,
@@ -3662,27 +4246,211 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+// ===== 내가 쓴 리뷰 화면 =====
+class MyReviewsScreen extends StatefulWidget {
+  const MyReviewsScreen({super.key});
+
+  @override
+  State<MyReviewsScreen> createState() => _MyReviewsScreenState();
+}
+
+class _MyReviewsScreenState extends State<MyReviewsScreen> {
+  late Future<List<MyReview>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = fetchMyReviews();
+  }
+
+  Widget _stars(double rating) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (i) {
+        IconData icon;
+        if (rating >= i + 1) {
+          icon = Icons.star;
+        } else if (rating >= i + 0.5) {
+          icon = Icons.star_half;
+        } else {
+          icon = Icons.star_border;
+        }
+        return Icon(icon, color: BB.neonYellow, size: 15);
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '내가 쓴 리뷰',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        ),
+      ),
+      body: FutureBuilder<List<MyReview>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: BB.neonPurple),
+            );
+          }
+          if (snap.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '${snap.error}'.replaceFirst('Exception: ', ''),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: BB.textDim),
+                ),
+              ),
+            );
+          }
+          final reviews = snap.data ?? [];
+          if (reviews.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.rate_review_outlined,
+                      size: 56, color: BB.textFaint),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '아직 작성한 리뷰가 없어요',
+                    style: TextStyle(color: BB.textDim, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '테마 상세 화면에서 리뷰를 남겨보세요',
+                    style: TextStyle(
+                      color: BB.textFaint,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: reviews.length,
+            itemBuilder: (context, i) {
+              final r = reviews[i];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: BB.surface,
+                  borderRadius: BorderRadius.circular(BB.radius),
+                  border: Border.all(color: BB.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            r.themeName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: BB.text,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: (r.isSuccess ? BB.neonGreen : BB.neonRed)
+                                .withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            r.isSuccess ? '탈출 성공' : '탈출 실패',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color:
+                                  r.isSuccess ? BB.neonGreen : BB.neonRed,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _stars(r.rating),
+                        const SizedBox(width: 6),
+                        Text(
+                          r.rating.toStringAsFixed(1),
+                          style: const TextStyle(
+                            color: BB.neonYellow,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          r.createdAt,
+                          style: const TextStyle(
+                            color: BB.textFaint,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      r.content,
+                      style: const TextStyle(
+                        color: BB.text,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _MenuItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final String? badge;
+  final VoidCallback? onTap;
   const _MenuItem({
     required this.icon,
     required this.label,
     this.badge,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('"$label"은 곧 만들 거예요'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      },
+      onTap: onTap ??
+          () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('"$label"은 곧 만들 거예요'),
+                duration: const Duration(seconds: 1),
+              ),
+            );
+          },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
