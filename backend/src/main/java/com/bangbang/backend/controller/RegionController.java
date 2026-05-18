@@ -3,6 +3,8 @@ package com.bangbang.backend.controller;
 import com.bangbang.backend.dto.RegionStatsDto;
 import com.bangbang.backend.dto.StoreDto;
 import com.bangbang.backend.repository.StoreRepository;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,6 +44,51 @@ public class RegionController {
             result.add(new RegionStatsDto(region, count, grade, color));
         }
         return result;
+    }
+
+    // GET /api/regions/subregions - 권역별 세부지역 + 매장 수 (지역 선택 모달용)
+    @GetMapping("/subregions")
+    public List<RegionSubregions> getSubregions() {
+        List<StoreDto> stores = storeRepository.findAll();
+
+        List<RegionSubregions> result = new ArrayList<>();
+        for (String region : ALL_REGIONS) {
+            // 해당 권역 매장만 → 세부지역별 카운트
+            Map<String, Long> subCounts = stores.stream()
+                .filter(s -> region.equals(s.getRegion())
+                    && s.getSubRegion() != null
+                    && !s.getSubRegion().isBlank())
+                .collect(Collectors.groupingBy(
+                    StoreDto::getSubRegion, Collectors.counting()));
+
+            int total = stores.stream()
+                .filter(s -> region.equals(s.getRegion()))
+                .mapToInt(s -> 1).sum();
+
+            // 매장 수 많은 순 정렬
+            List<SubRegion> subs = subCounts.entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                .map(e -> new SubRegion(e.getKey(), e.getValue().intValue()))
+                .collect(Collectors.toList());
+
+            result.add(new RegionSubregions(region, total, subs));
+        }
+        return result;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class RegionSubregions {
+        private String region;
+        private int totalCount;
+        private List<SubRegion> subRegions;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class SubRegion {
+        private String name;
+        private int count;
     }
 
     private String computeGrade(int count) {

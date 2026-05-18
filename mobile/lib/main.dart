@@ -76,6 +76,24 @@ class Store {
   }
 }
 
+/// 난이도(1~5) → 텍스트 라벨. 별점(리뷰 평점)과 헷갈리지 않게 텍스트로 표현.
+String difficultyLabel(int difficulty) {
+  switch (difficulty) {
+    case 1:
+      return '매우 쉬움';
+    case 2:
+      return '쉬움';
+    case 3:
+      return '보통';
+    case 4:
+      return '어려움';
+    case 5:
+      return '매우 어려움';
+    default:
+      return '-';
+  }
+}
+
 /// 테마 데이터 모델 (백엔드 ThemeDto에 대응)
 /// 주의: Flutter의 ThemeData와 이름 충돌 피하려고 EscapeTheme으로 명명
 class EscapeTheme {
@@ -206,6 +224,7 @@ class AuthStore {
     await sp.setString(_kUsername, u.username);
     await sp.setString(_kNickname, u.nickname);
     await sp.setBool(_kAdmin, u.isAdmin);
+    await FavoriteStore.reload();
   }
 
   static Future<AuthUser?> load() async {
@@ -219,11 +238,13 @@ class AuthStore {
       token: token,
       isAdmin: sp.getBool(_kAdmin) ?? false,
     );
+    await FavoriteStore.reload();
     return current;
   }
 
   static Future<void> clear() async {
     current = null;
+    FavoriteStore.ids = {};
     final sp = await SharedPreferences.getInstance();
     await sp.remove(_kToken);
     await sp.remove(_kUserId);
@@ -444,6 +465,316 @@ Future<List<VisitedRoom>> fetchVisitedRooms() async {
   }
   final body = json.decode(utf8.decode(res.bodyBytes));
   throw Exception(body['message'] ?? '방문 기록을 불러오지 못했습니다');
+}
+
+// ===== 지역 선택 =====
+
+class SubRegionCount {
+  final String name;
+  final int count;
+  SubRegionCount(this.name, this.count);
+  factory SubRegionCount.fromJson(Map<String, dynamic> j) =>
+      SubRegionCount(j['name'] ?? '', j['count'] ?? 0);
+}
+
+class RegionSubregions {
+  final String region;
+  final int totalCount;
+  final List<SubRegionCount> subRegions;
+  RegionSubregions(this.region, this.totalCount, this.subRegions);
+  factory RegionSubregions.fromJson(Map<String, dynamic> j) =>
+      RegionSubregions(
+        j['region'] ?? '',
+        j['totalCount'] ?? 0,
+        ((j['subRegions'] ?? []) as List)
+            .map((e) => SubRegionCount.fromJson(e))
+            .toList(),
+      );
+}
+
+/// GET /api/regions/subregions
+Future<List<RegionSubregions>> fetchSubregions() async {
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/regions/subregions'),
+  );
+  if (res.statusCode == 200) {
+    final List<dynamic> data = json.decode(utf8.decode(res.bodyBytes));
+    return data.map((e) => RegionSubregions.fromJson(e)).toList();
+  }
+  throw Exception('지역 정보를 불러오지 못했습니다 (${res.statusCode})');
+}
+
+/// 지역 선택 바텀시트 — 좌: 권역 / 우: 세부지역+매장수
+class RegionPickerSheet extends StatefulWidget {
+  const RegionPickerSheet({super.key});
+
+  @override
+  State<RegionPickerSheet> createState() => _RegionPickerSheetState();
+}
+
+class _RegionPickerSheetState extends State<RegionPickerSheet> {
+  late Future<List<RegionSubregions>> _future;
+  int _selectedRegionIdx = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = fetchSubregions();
+  }
+
+  void _goList(String? subRegion) {
+    Navigator.pop(context); // 시트 닫기
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HomeScreen(initialSubRegion: subRegion),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.78,
+      maxChildSize: 0.92,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (context, scrollCtrl) {
+        return Column(
+          children: [
+            // 헤더
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+              child: Row(
+                children: [
+                  const Text(
+                    '지역 선택',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: BB.text,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: BB.textDim),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: BB.border),
+            Expanded(
+              child: FutureBuilder<List<RegionSubregions>>(
+                future: _future,
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                          color: BB.neonPurple),
+                    );
+                  }
+                  if (snap.hasError || snap.data == null) {
+                    return Center(
+                      child: Text(
+                        '${snap.error}'.replaceFirst('Exception: ', ''),
+                        style: const TextStyle(color: BB.textDim),
+                      ),
+                    );
+                  }
+                  final regions = snap.data!;
+                  if (_selectedRegionIdx >= regions.length) {
+                    _selectedRegionIdx = 0;
+                  }
+                  final sel = regions[_selectedRegionIdx];
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 좌: 권역 리스트
+                      SizedBox(
+                        width: 110,
+                        child: ListView.builder(
+                          itemCount: regions.length,
+                          itemBuilder: (context, i) {
+                            final r = regions[i];
+                            final active = i == _selectedRegionIdx;
+                            return InkWell(
+                              onTap: () => setState(
+                                  () => _selectedRegionIdx = i),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 18,
+                                  horizontal: 12,
+                                ),
+                                color: active
+                                    ? BB.surface
+                                    : Colors.transparent,
+                                child: Text(
+                                  r.region,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: active
+                                        ? FontWeight.w800
+                                        : FontWeight.w500,
+                                    color: active
+                                        ? BB.neonPurple
+                                        : BB.textDim,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const VerticalDivider(
+                          width: 1, color: BB.border),
+                      // 우: 세부지역 + 매장수
+                      Expanded(
+                        child: ListView(
+                          controller: scrollCtrl,
+                          children: [
+                            // 권역 전체
+                            _subTile(
+                              '${sel.region} 전체',
+                              sel.totalCount,
+                              bold: true,
+                              onTap: () => _goList(null),
+                            ),
+                            if (sel.subRegions.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Text(
+                                  '등록된 매장이 없어요',
+                                  style: TextStyle(
+                                      color: BB.textFaint,
+                                      fontSize: 13),
+                                ),
+                              ),
+                            ...sel.subRegions.map((s) => _subTile(
+                                  s.name,
+                                  s.count,
+                                  onTap: () => _goList(s.name),
+                                )),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _subTile(String name, int count,
+      {bool bold = false, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: BB.border)),
+        ),
+        child: Row(
+          children: [
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+                color: BB.text,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 13,
+                color: BB.textDim,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ===== 즐겨찾기 =====
+
+/// 즐겨찾기 매장 ID 캐시 (로그인 세션 동안 유지, ♡ 상태 빠르게 판단)
+class FavoriteStore {
+  static Set<int> ids = {};
+
+  static bool has(int storeId) => ids.contains(storeId);
+
+  static Future<void> reload() async {
+    final token = AuthStore.current?.token;
+    if (token == null) {
+      ids = {};
+      return;
+    }
+    try {
+      final res = await http.get(
+        Uri.parse('http://localhost:3000/api/favorites/ids'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode == 200) {
+        final j = json.decode(utf8.decode(res.bodyBytes));
+        ids = ((j['storeIds'] ?? []) as List)
+            .map((e) => e as int)
+            .toSet();
+      }
+    } catch (_) {
+      // 실패해도 빈 상태 유지 (치명적 아님)
+    }
+  }
+
+  /// 토글 → 서버 반영 + 캐시 갱신. 최종 상태(true=즐겨찾기됨) 반환.
+  static Future<bool> toggle(int storeId) async {
+    final token = AuthStore.current?.token;
+    if (token == null) throw Exception('로그인이 필요합니다');
+    final isFav = ids.contains(storeId);
+    final res = await (isFav
+        ? http.delete(
+            Uri.parse('http://localhost:3000/api/favorites/$storeId'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+        : http.post(
+            Uri.parse('http://localhost:3000/api/favorites/$storeId'),
+            headers: {'Authorization': 'Bearer $token'},
+          ));
+    if (res.statusCode != 200) {
+      final b = json.decode(utf8.decode(res.bodyBytes));
+      throw Exception(b['message'] ?? '즐겨찾기 처리 실패');
+    }
+    if (isFav) {
+      ids.remove(storeId);
+    } else {
+      ids.add(storeId);
+    }
+    return !isFav;
+  }
+}
+
+/// GET /api/favorites - 내 즐겨찾기 매장 목록
+Future<List<Store>> fetchFavoriteStores() async {
+  final token = AuthStore.current?.token;
+  if (token == null) throw Exception('로그인이 필요합니다');
+  final res = await http.get(
+    Uri.parse('http://localhost:3000/api/favorites'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  if (res.statusCode == 200) {
+    final List<dynamic> data = json.decode(utf8.decode(res.bodyBytes));
+    return data.map((e) => Store.fromJson(e)).toList();
+  }
+  final b = json.decode(utf8.decode(res.bodyBytes));
+  throw Exception(b['message'] ?? '즐겨찾기를 불러오지 못했습니다');
 }
 
 // ===== 내 프로필 (칭호) =====
@@ -770,7 +1101,9 @@ class BangbangApp extends StatelessWidget {
 /// 홈 화면 - 이제 StatefulWidget!
 /// API 호출 결과를 상태로 관리해야 해서 Stateful로 바꿈
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  /// 지역 선택 모달에서 진입 시 미리 적용할 세부지역 필터
+  final String? initialSubRegion;
+  const HomeScreen({super.key, this.initialSubRegion});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -792,6 +1125,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _storesFuture = fetchStores(); // 화면 처음 뜰 때 자동 호출
+    if (widget.initialSubRegion != null &&
+        widget.initialSubRegion!.isNotEmpty) {
+      _selectedSubRegions.add(widget.initialSubRegion!);
+      _filtersExpanded = true;
+    }
   }
 
   @override
@@ -1356,17 +1694,59 @@ class StoreDetailScreen extends StatefulWidget {
 
 class _StoreDetailScreenState extends State<StoreDetailScreen> {
   late Future<List<EscapeTheme>> _themesFuture;
+  late bool _fav;
+  bool _favBusy = false;
 
   @override
   void initState() {
     super.initState();
     _themesFuture = fetchThemes(widget.store.id);
+    _fav = FavoriteStore.has(widget.store.id);
   }
 
   Future<void> _refresh() async {
     setState(() {
       _themesFuture = fetchThemes(widget.store.id);
     });
+  }
+
+  Future<void> _toggleFav() async {
+    if (AuthStore.current == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('로그인이 필요합니다 (마이 탭에서 로그인)'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    if (_favBusy) return;
+    setState(() => _favBusy = true);
+    try {
+      final now = await FavoriteStore.toggle(widget.store.id);
+      if (mounted) {
+        setState(() {
+          _fav = now;
+          _favBusy = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(now ? '즐겨찾기에 추가됨' : '즐겨찾기 해제됨'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _favBusy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1379,6 +1759,14 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              _fav ? Icons.favorite : Icons.favorite_border,
+              color: _fav ? BB.neonPink : null,
+            ),
+            onPressed: _favBusy ? null : _toggleFav,
+            tooltip: '즐겨찾기',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refresh,
@@ -1578,7 +1966,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
                                         ),
                                       ),
                                       child: Text(
-                                        '★ ${theme.difficulty}/5',
+                                        difficultyLabel(theme.difficulty),
                                         style: TextStyle(
                                           color: diffColor,
                                           fontSize: 11,
@@ -1663,7 +2051,7 @@ class ThemeDetailScreen extends StatelessWidget {
   const ThemeDetailScreen({
     super.key,
     required this.theme,
-    required this.storeName,
+    this.storeName = '',
   });
 
   Color _difficultyColor() {
@@ -1768,20 +2156,22 @@ class ThemeDetailScreen extends StatelessWidget {
                     letterSpacing: -0.5,
                   ),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    const Icon(Icons.store, color: BB.textDim, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      storeName,
-                      style: const TextStyle(
-                        color: BB.textDim,
-                        fontSize: 13,
+                if (storeName.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.store, color: BB.textDim, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        storeName,
+                        style: const TextStyle(
+                          color: BB.textDim,
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -1822,11 +2212,30 @@ class ThemeDetailScreen extends StatelessWidget {
                   ],
                 ),
                 const Spacer(),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(5, (i) {
+                    final filled = i < theme.difficulty;
+                    return Container(
+                      width: 14,
+                      height: 24,
+                      margin: const EdgeInsets.only(left: 4),
+                      decoration: BoxDecoration(
+                        color: filled
+                            ? _difficultyColor()
+                            : _difficultyColor().withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(width: 8),
                 Text(
-                  '★' * theme.difficulty + '☆' * (5 - theme.difficulty),
+                  '${theme.difficulty}/5',
                   style: TextStyle(
                     color: _difficultyColor(),
-                    fontSize: 22,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -3266,6 +3675,18 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
     );
   }
 
+  void _openRegionPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: BB.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const RegionPickerSheet(),
+    );
+  }
+
   void _openMap() {
     Navigator.push(
       context,
@@ -3441,7 +3862,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
                             children: [
                               Expanded(
                                 child: _BentoCard(
-                                  onTap: _openList,
+                                  onTap: _openRegionPicker,
                                   glowColor: BB.neonCyan,
                                   child: const Padding(
                                     padding: EdgeInsets.all(14),
@@ -3452,7 +3873,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
                                           MainAxisAlignment.spaceBetween,
                                       children: [
                                         Icon(
-                                          Icons.list_alt,
+                                          Icons.place,
                                           color: BB.neonCyan,
                                           size: 22,
                                         ),
@@ -3461,7 +3882,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              '전체 매장',
+                                              '지역 찾기',
                                               style: TextStyle(
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w700,
@@ -3469,7 +3890,7 @@ class _HomeMainScreenState extends State<HomeMainScreen> {
                                               ),
                                             ),
                                             Text(
-                                              '리스트로 보기',
+                                              '지역으로 찾기',
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 color: BB.textDim,
@@ -3722,18 +4143,28 @@ class _PopularThemeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final diffColor = _difficultyColor();
-    return Container(
-      width: 200,
-      decoration: BoxDecoration(
-        color: BB.surface,
-        borderRadius: BorderRadius.circular(BB.radius),
-        border: Border.all(color: BB.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ThemeDetailScreen(theme: theme),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(BB.radius),
+      child: Container(
+        width: 200,
+        decoration: BoxDecoration(
+          color: BB.surface,
+          borderRadius: BorderRadius.circular(BB.radius),
+          border: Border.all(color: BB.border),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Row(
               children: [
                 Container(
@@ -3747,7 +4178,7 @@ class _PopularThemeCard extends StatelessWidget {
                     border: Border.all(color: diffColor.withOpacity(0.4)),
                   ),
                   child: Text(
-                    '★ ${theme.difficulty}/5',
+                    difficultyLabel(theme.difficulty),
                     style: TextStyle(
                       color: diffColor,
                       fontSize: 11,
@@ -3817,7 +4248,8 @@ class _PopularThemeCard extends StatelessWidget {
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -4022,8 +4454,69 @@ class SeoulMapScreen extends StatelessWidget {
 
 // ===== 즐겨찾기 화면 =====
 
-class FavoritesScreen extends StatelessWidget {
+class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
+
+  @override
+  State<FavoritesScreen> createState() => _FavoritesScreenState();
+}
+
+class _FavoritesScreenState extends State<FavoritesScreen> {
+  Future<List<Store>>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AuthStore.current != null) {
+      _future = fetchFavoriteStores();
+    }
+  }
+
+  Widget _empty(IconData icon, String title, String sub, Widget? action) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: BB.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: BB.neonPink.withOpacity(0.3)),
+              ),
+              child: Icon(icon,
+                  size: 56, color: BB.neonPink.withOpacity(0.7)),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: BB.text,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              sub,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: BB.textDim,
+                height: 1.5,
+              ),
+            ),
+            if (action != null) ...[
+              const SizedBox(height: 24),
+              action,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4034,60 +4527,19 @@ class FavoritesScreen extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
         ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: BB.surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: BB.neonPink.withOpacity(0.3),
-                  ),
-                ),
-                child: Icon(
-                  Icons.favorite_border,
-                  size: 56,
-                  color: BB.neonPink.withOpacity(0.7),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                '아직 즐겨찾기가 없어요',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: BB.text,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '마음에 드는 매장이나 테마를\n♡ 아이콘으로 저장해보세요',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: BB.textDim,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
+      body: AuthStore.current == null
+          ? _empty(
+              Icons.lock_outline,
+              '로그인이 필요해요',
+              '로그인하면 매장을 즐겨찾기 할 수 있어요',
               SizedBox(
                 width: 200,
                 height: 46,
                 child: ElevatedButton.icon(
-                  icon: const Icon(Icons.search, size: 18),
-                  label: const Text(
-                    '전체 매장 보기',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  icon: const Icon(Icons.login, size: 18),
+                  label: const Text('로그인 / 회원가입',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: BB.neonPurple,
                     foregroundColor: BB.bg,
@@ -4096,28 +4548,126 @@ class FavoritesScreen extends StatelessWidget {
                     ),
                     elevation: 0,
                   ),
-                  onPressed: () {
-                    Navigator.pushReplacement(
+                  onPressed: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const HomeScreen(),
+                        builder: (_) => const LoginScreen(),
                       ),
                     );
+                    if (mounted && AuthStore.current != null) {
+                      setState(() => _future = fetchFavoriteStores());
+                    }
                   },
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                '로그인 + 즐겨찾기 저장은 Phase 2',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: BB.textFaint,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : FutureBuilder<List<Store>>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                        color: BB.neonPurple),
+                  );
+                }
+                if (snap.hasError) {
+                  return Center(
+                    child: Text(
+                      '${snap.error}'.replaceFirst('Exception: ', ''),
+                      style: const TextStyle(color: BB.textDim),
+                    ),
+                  );
+                }
+                final stores = snap.data ?? [];
+                if (stores.isEmpty) {
+                  return _empty(
+                    Icons.favorite_border,
+                    '아직 즐겨찾기가 없어요',
+                    '매장 상세 화면에서 ♡를 눌러보세요',
+                    SizedBox(
+                      width: 200,
+                      height: 46,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.search, size: 18),
+                        label: const Text('전체 매장 보기',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: BB.neonPurple,
+                          foregroundColor: BB.bg,
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(BB.radius),
+                          ),
+                          elevation: 0,
+                        ),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const HomeScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: stores.length,
+                  itemBuilder: (context, i) {
+                    final s = stores[i];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: BB.surface,
+                        borderRadius: BorderRadius.circular(BB.radius),
+                        border: Border.all(color: BB.border),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        leading: const Icon(Icons.favorite,
+                            color: BB.neonPink),
+                        title: Text(
+                          s.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: BB.text,
+                            fontSize: 15,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${s.region} · ${s.subRegion} · 테마 ${s.themeCount}',
+                          style: const TextStyle(
+                            color: BB.textDim,
+                            fontSize: 12,
+                          ),
+                        ),
+                        trailing: const Icon(Icons.chevron_right,
+                            color: BB.textFaint),
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  StoreDetailScreen(store: s),
+                            ),
+                          );
+                          if (mounted) {
+                            setState(() =>
+                                _future = fetchFavoriteStores());
+                          }
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
       bottomNavigationBar: const _BangbangBottomNav(currentIndex: 2),
     );
   }
@@ -4375,10 +4925,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
             },
           ),
           const _MenuDivider(),
-          const _MenuItem(
-            icon: Icons.notifications_outlined,
-            label: '알림 설정',
-          ),
           _MenuItem(
             icon: Icons.info_outline,
             label: '앱 정보',
@@ -4391,9 +4937,17 @@ class _MyPageScreenState extends State<MyPageScreen> {
               );
             },
           ),
-          const _MenuItem(
+          _MenuItem(
             icon: Icons.description_outlined,
             label: '약관 / 개인정보처리방침',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TermsScreen(),
+                ),
+              );
+            },
           ),
           if (AuthStore.current?.isAdmin == true) ...[
             const _MenuDivider(),
@@ -4988,6 +5542,178 @@ class _AdminAddStoreScreenState extends State<AdminAddStoreScreen> {
     );
   }
 }
+
+// ===== 약관 / 개인정보처리방침 화면 =====
+class TermsScreen extends StatelessWidget {
+  const TermsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            '약관 / 개인정보',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+          ),
+          bottom: const TabBar(
+            labelColor: BB.neonPurple,
+            unselectedLabelColor: BB.textDim,
+            indicatorColor: BB.neonPurple,
+            tabs: [
+              Tab(text: '이용약관'),
+              Tab(text: '개인정보처리방침'),
+            ],
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            _TermsBody(text: _termsOfService),
+            _TermsBody(text: _privacyPolicy),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TermsBody extends StatelessWidget {
+  final String text;
+  const _TermsBody({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: BB.neonYellow.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(BB.radiusS),
+            border: Border.all(color: BB.neonYellow.withOpacity(0.35)),
+          ),
+          child: const Text(
+            '※ 본 문서는 MVP 단계 초안 템플릿입니다. '
+            '정식 출시 전 법률 전문가 검토가 필요합니다.',
+            style: TextStyle(
+              fontSize: 11,
+              color: BB.neonYellow,
+              height: 1.5,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 13,
+            color: BB.text,
+            height: 1.7,
+          ),
+        ),
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+}
+
+const String _termsOfService = '''
+모두의 방탈출 이용약관
+
+시행일: 2026년 5월 18일
+
+제1조 (목적)
+본 약관은 모두의 방탈출(이하 "서비스")이 제공하는 방탈출 매장·테마 정보 조회, 리뷰 작성, 방문 기록 등 제반 서비스의 이용 조건 및 절차, 이용자와 서비스 간 권리·의무를 규정함을 목적으로 합니다.
+
+제2조 (정의)
+1. "이용자"란 본 약관에 따라 서비스를 이용하는 자를 말합니다.
+2. "회원"이란 아이디와 비밀번호를 등록하여 가입한 이용자를 말합니다.
+3. "콘텐츠"란 이용자가 작성한 리뷰, 별점, 방문 기록 등을 말합니다.
+
+제3조 (약관의 효력 및 변경)
+1. 본 약관은 서비스 화면에 게시함으로써 효력이 발생합니다.
+2. 서비스는 관련 법령을 위반하지 않는 범위에서 약관을 변경할 수 있으며, 변경 시 적용일자 및 사유를 명시하여 사전 공지합니다.
+
+제4조 (회원가입 및 계정)
+1. 이용자는 아이디·비밀번호를 입력하여 회원으로 가입할 수 있습니다.
+2. 회원은 본인의 계정 정보를 정확히 관리할 책임이 있으며, 비밀번호 관리 소홀로 인한 책임은 회원에게 있습니다.
+3. 타인의 정보를 도용하거나 허위 정보를 등록한 경우 서비스 이용이 제한될 수 있습니다.
+
+제5조 (서비스의 제공 및 변경)
+1. 서비스는 매장·테마 정보, 리뷰, 지도, 도장깨기 기록 등을 제공합니다.
+2. 매장·장소 정보 일부는 카카오 로컬 오픈 API를 통해 제공되며, 해당 데이터의 정확성은 원 제공처에 따릅니다.
+3. 서비스 내용은 운영상·기술상 필요에 따라 변경될 수 있습니다.
+
+제6조 (이용자의 의무)
+이용자는 다음 행위를 하여서는 안 됩니다.
+1. 허위 사실 또는 타인을 비방·명예훼손하는 리뷰 작성
+2. 동일 콘텐츠의 반복 등록 등 서비스 운영 방해 행위
+3. 타인의 계정 도용 및 부정 이용
+4. 관련 법령 및 공공질서·미풍양속에 반하는 행위
+
+제7조 (콘텐츠의 권리 및 책임)
+1. 이용자가 작성한 리뷰 등 콘텐츠의 저작권은 작성자에게 있습니다.
+2. 서비스는 콘텐츠를 서비스 운영·노출·홍보 목적으로 사용할 수 있습니다.
+3. 이용자가 작성한 콘텐츠에 대한 책임은 작성자 본인에게 있으며, 신고 누적 시 사전 통지 없이 비공개 처리될 수 있습니다.
+
+제8조 (면책)
+1. 서비스는 천재지변, 불가항력, 이용자 귀책 사유로 인한 손해에 대하여 책임지지 않습니다.
+2. 서비스는 매장 정보의 최신성·정확성을 보장하지 않으며, 실제 예약·방문은 이용자 책임 하에 이루어집니다.
+
+제9조 (분쟁 해결)
+본 약관과 관련한 분쟁은 대한민국 법령을 준거법으로 하며, 관할 법원은 민사소송법에 따릅니다.
+
+문의: rudns10@gmail.com
+''';
+
+const String _privacyPolicy = '''
+모두의 방탈출 개인정보처리방침
+
+시행일: 2026년 5월 18일
+
+모두의 방탈출(이하 "서비스")은 「개인정보 보호법」 등 관련 법령을 준수하며, 이용자의 개인정보를 다음과 같이 처리합니다.
+
+1. 수집하는 개인정보 항목
+- 필수: 아이디, 비밀번호(암호화 저장), 닉네임
+- 서비스 이용 과정에서 생성: 작성한 리뷰·별점, 방문(클리어) 기록, 접속 토큰
+
+2. 개인정보의 수집·이용 목적
+- 회원 식별 및 로그인 인증
+- 리뷰·방문 기록 등 서비스 핵심 기능 제공
+- 도장깨기 진행도, 칭호 등 개인화 기능 제공
+- 부정 이용 방지 및 서비스 운영·개선
+
+3. 개인정보의 보유 및 이용 기간
+- 회원 탈퇴 시 지체 없이 파기함을 원칙으로 합니다.
+- 관련 법령에 따라 보존이 필요한 경우 해당 기간 동안 보관합니다.
+
+4. 개인정보의 제3자 제공
+- 서비스는 이용자의 개인정보를 외부에 제공하지 않습니다.
+- 단, 법령에 의거하거나 수사기관의 적법한 요청이 있는 경우는 예외로 합니다.
+
+5. 개인정보 처리의 위탁
+- 현재 개인정보 처리를 외부에 위탁하지 않습니다.
+- 장소 정보 조회를 위해 카카오 로컬 오픈 API를 이용하나, 이 과정에서 이용자의 개인정보는 전송되지 않습니다.
+
+6. 개인정보의 파기
+- 보유 기간 경과 또는 처리 목적 달성 시, 전자적 파일은 복구 불가능한 방법으로 삭제합니다.
+
+7. 비밀번호의 보호
+- 비밀번호는 단방향 암호화(BCrypt 해시)되어 저장되며, 운영자도 원문을 알 수 없습니다.
+
+8. 이용자의 권리
+- 이용자는 언제든지 본인의 개인정보 열람·정정·삭제·처리정지를 요청할 수 있습니다.
+- 요청은 아래 문의처를 통해 접수할 수 있습니다.
+
+9. 개인정보 보호책임자
+- 책임자: BHAN
+- 문의: rudns10@gmail.com
+
+10. 고지의 의무
+- 본 방침의 내용 추가·삭제·수정이 있을 경우 시행 전 서비스 화면을 통해 공지합니다.
+''';
 
 // ===== 앱 정보 화면 =====
 class AppInfoScreen extends StatelessWidget {
